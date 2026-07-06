@@ -1,0 +1,21 @@
+name: GiveHead
+version: '1.0.0'
+main: com.yourserver.givehead.GiveHeadPlugin
+api-version: '1.20'
+softdepend: [CustomEnchants, Skript]
+author: YourName
+
+commands:
+  givehead:
+    aliases: [gh, giveskull]
+    description: Give a player a player-head skinned as a mob (or any offline-player skin).
+    usage: /<command> <player> <mob-or-skin> <head name...>
+    permission: givehead.use
+
+permissions:
+  givehead.use:
+    description: Allowed to run /givehead
+    default: op
+  givehead.admin:
+    description: Allowed to reload the GiveHead config
+    default: op

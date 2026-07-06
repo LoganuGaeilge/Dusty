@@ -1,0 +1,88 @@
+# GiveHead configuration
+#
+# /givehead <player> <mob-or-skin> <head name...>
+#
+#   <player>      - the ONLINE player who receives the head item.
+#   <mob-or-skin> - either:
+#                     a) a mob/entity type name (e.g. ZOMBIE, SKELETON,
+#                        WITHER_SKELETON, PIG, ENDERMAN, ...) that is looked
+#                        up below in "mob-heads:" to find which offline
+#                        player's skin to render on the head, OR
+#                     b) any arbitrary offline-player/skin name (e.g.
+#                        "MHF_Chicken", a real player's IGN, etc.) which is
+#                        used directly as the texture, exactly like the
+#                        original Skript command did.
+#
+#                   If it's a recognised mob type that has NO entry under
+#                   "mob-heads:", the "default-player" skin below is used
+#                   instead of failing - so you only need to map the mobs
+#                   you actually care about.
+#   <head name...>- display name text for the head (everything after the
+#                   2nd argument, spaces allowed, no quotes needed). Colour
+#                   codes with '&' are supported. " Head" is appended
+#                   automatically, matching the original Skript behaviour
+#                   ("%arg-3% Head").
+#
+# This is designed to be driven automatically from CustomEnchants' on-kill
+# actions via the %victim_type% placeholder (the mob type of whatever was
+# just killed), e.g. in CustomEnchants' config.yml:
+#
+#   on-kill:
+#     - "chance: %level_num% * 10: cmd: givehead %player% %victim_type% %victim_type%"
+#
+# GiveHead does the rest: it looks %victim_type% (e.g. "ZOMBIE") up below,
+# finds the matching skin (or falls back to default-player), and gives the
+# player a correctly-skinned head named after the mob.
+
+# Used whenever the 2nd command argument is a recognised mob/entity type
+# that has no explicit entry below.
+default-player: "MHF_Steve"
+
+# When true (default), any ALL_CAPS_WITH_UNDERSCORES word in the head name
+# (e.g. the raw mob type "ZOMBIE_PIGLIN" that comes straight from
+# CustomEnchants' %victim_type%) is automatically turned into "Zombie
+# Piglin" instead of showing the raw Java enum text. Hand-typed names that
+# aren't all-caps (e.g. "Legendary Zombie") are left completely untouched.
+# Set to false if you want head names to always show exactly what was
+# passed in, capitalisation and all.
+pretty-print-head-names: true
+
+# Each value under mob-heads can be either:
+#   1) A player/skin name (e.g. "MHF_Zombie") - looked up via Mojang API
+#   2) A base64 texture-property value (the eyJ... string from sites like
+#      minecraft-heads.com) - applied directly, no API call needed.
+#      Example: go to minecraft-heads.com, find a head, copy the "Value"
+#      field from the texture property, and paste it here.
+mob-heads:
+  ZOMBIE: "MHF_Zombie"
+  SKELETON: "MHF_Skeleton"
+  WITHER_SKELETON: "MHF_WSkeleton"
+  CREEPER: "MHF_Creeper"
+  SPIDER: "MHF_Spider"
+  CAVE_SPIDER: "MHF_CaveSpider"
+  ENDERMAN: "MHF_Enderman"
+  BLAZE: "MHF_Blaze"
+  GHAST: "MHF_Ghast"
+  SLIME: "MHF_Slime"
+  MAGMA_CUBE: "MHF_LavaSlime"
+  PIG: "MHF_Pig"
+  PIG_ZOMBIE: "MHF_PigZombie"
+  ZOMBIFIED_PIGLIN: "MHF_PigZombie"
+  COW: "MHF_Cow"
+  CHICKEN: "MHF_Chicken"
+  SHEEP: "MHF_Sheep"
+  SQUID: "MHF_Squid"
+  VILLAGER: "MHF_Villager"
+  IRON_GOLEM: "MHF_Golem"
+  OCELOT: "MHF_Ocelot"
+  WOLF: "MHF_Wolf"
+  # Example using a base64 texture property (this is a custom bee head):
+  # BEE: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMTljNjFmNTNhZDM5YmMwODk1MTA2ZDcxMzUwNTJkOGQ2MzRhNjViNGVmYjc4ZjA5NWZiYjZmZmVjY2Q4ZjAyMiJ9fX0="
+  # Add more mob -> skin mappings here as needed.
+
+messages:
+  usage: "&cUsage: /givehead <player> <mob-or-skin> <head name...>"
+  player-not-found: "&cThat player is not online."
+  given-to-target: "&aGave %target% a %head% head."
+  given-confirm: "&aYou received a %head% head."
+  reloaded: "&aGiveHead config reloaded."
