@@ -11,15 +11,18 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.profile.PlayerProfile;
+import org.bukkit.profile.PlayerTextures;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -28,9 +31,13 @@ import java.util.stream.Collectors;
  * Supports two kinds of skin source in config:
  *   a) Player/skin name (e.g. "MHF_Zombie") - resolved via Mojang API
  *   b) Base64 texture property (the eyJ... value from head databases) -
- *      applied directly via GameProfile reflection, no API call needed
+ *      the embedded skin URL is applied via Bukkit's PlayerProfile API,
+ *      no external API call needed
  */
 public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
+
+    private static final Pattern TEXTURE_URL_PATTERN =
+            Pattern.compile("\"url\"\\s*:\\s*\"([^\"]+)\"");
 
     private final GiveHeadPlugin plugin;
 
@@ -141,37 +148,48 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Builds a player head with a custom texture applied via GameProfile
-     * reflection. This is the standard Spigot pattern for applying base64
-     * texture data (from minecraft-heads.com etc.) without needing a real
-     * player account.
+     * Builds a player head with a custom texture applied via Bukkit's stable
+     * {@link PlayerProfile}/{@link PlayerTextures} API.
+     *
+     * The old approach reflected a {@code com.mojang.authlib.GameProfile}
+     * straight onto {@code CraftMetaSkull}'s private {@code profile} field.
+     * That worked on 1.20.4 and earlier, but on 1.20.5+ (and 1.21.x, incl.
+     * 1.21.4) that field is no longer a {@code GameProfile} - it's an NMS
+     * {@code ResolvableProfile} - so the reflective {@code Field#set} throws
+     * an {@code IllegalArgumentException} and the head silently fails.
+     *
+     * The base64 texture value from minecraft-heads.com etc. decodes to JSON
+     * of the form {@code {"textures":{"SKIN":{"url":"http://textures...."}}}}.
+     * We extract that skin URL and hand it to the version-agnostic Bukkit
+     * API, which builds the correct profile for whatever server version is
+     * running.
      */
     private ItemStack buildTexturedHead(String base64Texture, String headNameText) {
         ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) skull.getItemMeta();
-        if (meta == null) return skull;
+        if (meta == null) return null;
 
         try {
-            // com.mojang.authlib.GameProfile is bundled with every Spigot/Paper server
-            Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
-            Class<?> propertyClass = Class.forName("com.mojang.authlib.properties.Property");
-            Class<?> propertyMapClass = Class.forName("com.mojang.authlib.properties.PropertyMap");
+            String decoded = new String(
+                    Base64.getDecoder().decode(base64Texture.trim()), StandardCharsets.UTF_8);
+            Matcher matcher = TEXTURE_URL_PATTERN.matcher(decoded);
+            if (!matcher.find()) {
+                plugin.getLogger().warning(
+                        "[GiveHead] Could not find a skin URL in the supplied texture value.");
+                return null;
+            }
 
-            Constructor<?> profileConstructor = gameProfileClass.getConstructor(UUID.class, String.class);
-            Object profile = profileConstructor.newInstance(UUID.randomUUID(), "custom_head");
+            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID(), "");
+            PlayerTextures textures = profile.getTextures();
+            textures.setSkin(new URL(matcher.group(1)));
+            profile.setTextures(textures);
 
-            Method getProperties = gameProfileClass.getMethod("getProperties");
-            Object properties = getProperties.invoke(profile);
-
-            Constructor<?> propertyConstructor = propertyClass.getConstructor(String.class, String.class);
-            Object textureProperty = propertyConstructor.newInstance("textures", base64Texture);
-
-            Method putMethod = propertyMapClass.getMethod("put", Object.class, Object.class);
-            putMethod.invoke(properties, "textures", textureProperty);
-
-            Field profileField = meta.getClass().getDeclaredField("profile");
-            profileField.setAccessible(true);
-            profileField.set(meta, profile);
+            meta.setOwnerProfile(profile);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning(
+                    "[GiveHead] Invalid base64 texture value (not a valid head texture): "
+                            + e.getMessage());
+            return null;
         } catch (Exception e) {
             plugin.getLogger().warning("[GiveHead] Failed to apply texture property: " + e.getMessage());
             return null;
