@@ -1,0 +1,15 @@
+name: SimpleAH
+version: 1.0.0
+main: com.simpleah.plugin.SimpleAH
+api-version: 1.16
+softdepend: [DustyEconomy]
+commands:
+  ah:
+    description: Main command for the Auction House.
+    aliases: [auction, auctionhouse]
+    usage: /<command> [sell|bin <price>|cancelled]
+    permission: simpleah.use
+permissions:
+  simpleah.use:
+    description: Allows use of the /ah command
+    default: true

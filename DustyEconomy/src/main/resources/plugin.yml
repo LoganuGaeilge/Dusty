@@ -1,0 +1,25 @@
+name: DustyEconomy
+version: '${version}'
+main: com.dustyrpg.economy.EconomyPlugin
+api-version: '1.20'
+author: YourName
+description: Multi-currency economy system (converted from a Skript script)
+softdepend: [PlaceholderAPI]
+
+commands:
+  sell:
+    description: Sell sellable items in your inventory for currency
+    usage: /sell
+  currencyset:
+    description: Set a player's currency balance
+    usage: /currencyset <currency> <amount> <player>
+    permission: dustyeconomy.admin
+  currencyadd:
+    description: Add to a player's currency balance
+    usage: /currencyadd <currency> <amount> <player>
+    permission: dustyeconomy.admin
+
+permissions:
+  dustyeconomy.admin:
+    description: Allows use of the admin currency commands
+    default: op

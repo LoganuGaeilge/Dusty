@@ -1,0 +1,4 @@
+# SimpleAH Configuration
+
+# Default duration for BIN items in hours
+bin-duration-hours: 48

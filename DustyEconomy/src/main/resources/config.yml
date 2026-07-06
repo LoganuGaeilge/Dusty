@@ -1,0 +1,12 @@
+# Define what /sell will buy from players and which currency they earn.
+# currency must be one of: money, orbs, souls, credits
+sell-prices:
+  COBBLESTONE:
+    price: 1
+    currency: money
+  COAL:
+    price: 10
+    currency: money
+  DIAMOND:
+    price: 5
+    currency: credits
