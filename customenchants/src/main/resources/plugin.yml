@@ -1,0 +1,21 @@
+name: CustomEnchants
+version: '1.0.0'
+main: com.yourserver.customenchants.CustomEnchantsPlugin
+api-version: '1.20'
+softdepend: [Skript, Vault, WorldGuard, DustyEconomy]
+author: YourName
+
+commands:
+  customenchants:
+    aliases: [ce, cenchants]
+    description: Manage the custom enchant system.
+    usage: /<command> <give-book|give-random-book|give-dust|reload> ...
+    permission: customenchants.admin
+
+permissions:
+  customenchants.admin:
+    description: Access to admin commands (give items, reload)
+    default: op
+  customenchants.use:
+    description: Allowed to apply enchant books
+    default: true
