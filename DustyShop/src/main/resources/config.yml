@@ -1,0 +1,103 @@
+# DustyShop Configuration
+# Currencies: money, orbs, souls (DustyEconomy), xp-levels (vanilla XP levels)
+
+categories:
+  tools:
+    display-name: "&6Tools & Weapons"
+    icon: DIAMOND_PICKAXE
+    slot: 10
+    items:
+      diamond-pickaxe:
+        material: DIAMOND_PICKAXE
+        display-name: "&bDiamond Pickaxe"
+        lore:
+          - "&7A sturdy pickaxe"
+        currency: money
+        price: 500
+      diamond-sword:
+        material: DIAMOND_SWORD
+        display-name: "&bDiamond Sword"
+        lore:
+          - "&7A sharp blade"
+        currency: money
+        price: 750
+      diamond-axe:
+        material: DIAMOND_AXE
+        display-name: "&bDiamond Axe"
+        lore:
+          - "&7Chops trees and foes"
+        currency: orbs
+        price: 50
+  armor:
+    display-name: "&9Armor"
+    icon: DIAMOND_CHESTPLATE
+    slot: 12
+    items:
+      diamond-helmet:
+        material: DIAMOND_HELMET
+        display-name: "&9Diamond Helmet"
+        lore:
+          - "&7Protects your head"
+        currency: souls
+        price: 30
+      diamond-chestplate:
+        material: DIAMOND_CHESTPLATE
+        display-name: "&9Diamond Chestplate"
+        lore:
+          - "&7Strong chest protection"
+        currency: money
+        price: 1200
+      diamond-leggings:
+        material: DIAMOND_LEGGINGS
+        display-name: "&9Diamond Leggings"
+        lore:
+          - "&7Leg armor"
+        currency: money
+        price: 1000
+      diamond-boots:
+        material: DIAMOND_BOOTS
+        display-name: "&9Diamond Boots"
+        lore:
+          - "&7Sturdy footwear"
+        currency: orbs
+        price: 80
+  blocks:
+    display-name: "&aBlocks"
+    icon: GRASS_BLOCK
+    slot: 14
+    items:
+      grass-block:
+        material: GRASS_BLOCK
+        amount: 64
+        display-name: "&aGrass Block x64"
+        currency: xp-levels
+        price: 3
+      oak-log:
+        material: OAK_LOG
+        amount: 64
+        display-name: "&6Oak Log x64"
+        currency: xp-levels
+        price: 2
+      cobblestone:
+        material: COBBLESTONE
+        amount: 64
+        display-name: "&7Cobblestone x64"
+        currency: xp-levels
+        price: 1
+  food:
+    display-name: "&cFood"
+    icon: GOLDEN_APPLE
+    slot: 16
+    items:
+      golden-apple:
+        material: GOLDEN_APPLE
+        amount: 8
+        display-name: "&6Golden Apple x8"
+        currency: money
+        price: 300
+      cooked-beef:
+        material: COOKED_BEEF
+        amount: 64
+        display-name: "&cSteak x64"
+        currency: xp-levels
+        price: 2

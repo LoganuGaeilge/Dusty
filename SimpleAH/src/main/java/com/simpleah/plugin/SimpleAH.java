@@ -1,10 +1,10 @@
 package com.simpleah.plugin;
 
+import com.simpleah.plugin.util.DustyEconomyBridge;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import com.simpleah.plugin.util.DustyEconomyBridge;
 
 public class SimpleAH extends JavaPlugin implements Listener {
 
@@ -12,19 +12,19 @@ public class SimpleAH extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        // Handle config
         getConfig().addDefault("bin-duration-hours", 48);
         getConfig().options().copyDefaults(true);
         saveConfig();
 
         this.auctionManager = new AuctionManager(this);
 
-        // Register commands & events
-        getCommand("ah").setExecutor(new AHCommand(this, auctionManager));
-        getServer().getPluginManager().registerEvents(new AHGUIListener(this, auctionManager), this);
+        AHCommand ahCommand = new AHCommand(this, auctionManager);
+        getCommand("ah").setExecutor(ahCommand);
+        getServer().getPluginManager().registerEvents(
+                new AHGUIListener(this, auctionManager, ahCommand), this);
         getServer().getPluginManager().registerEvents(this, this);
 
-        getLogger().info("SimpleAH initialized successfully. DustyEconomy Bridge status: "
+        getLogger().info("SimpleAH initialized. DustyEconomy Bridge: "
                 + DustyEconomyBridge.isAvailable(getLogger()));
     }
 
@@ -37,7 +37,6 @@ public class SimpleAH extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        // Claim any earnings accumulated while offline
         if (auctionManager != null) {
             auctionManager.claimOfflineEarnings(event.getPlayer());
         }
