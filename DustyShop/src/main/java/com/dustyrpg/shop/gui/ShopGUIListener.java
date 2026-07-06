@@ -25,7 +25,9 @@ public class ShopGUIListener implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         String title = event.getView().getTitle();
-        if (!title.equals(ShopGUI.MAIN_TITLE) && !title.startsWith(ShopGUI.CATEGORY_PREFIX)) return;
+        if (!title.equals(ShopGUI.MAIN_TITLE)
+                && !title.startsWith(ShopGUI.CATEGORY_PREFIX)
+                && !title.startsWith(ShopGUI.ENTITY_PREFIX)) return;
 
         event.setCancelled(true);
 
@@ -37,12 +39,13 @@ public class ShopGUIListener implements Listener {
         if (clicked.getType() == Material.BLACK_STAINED_GLASS_PANE) return;
 
         Player player = (Player) event.getWhoClicked();
-        ShopGUI gui = plugin.getShopGUI();
 
         if (title.equals(ShopGUI.MAIN_TITLE)) {
             handleMainMenuClick(player, event.getSlot());
         } else if (title.startsWith(ShopGUI.CATEGORY_PREFIX)) {
             handleCategoryClick(player, event.getSlot(), clicked);
+        } else if (title.startsWith(ShopGUI.ENTITY_PREFIX)) {
+            handleEntityShopClick(player, event.getSlot(), clicked);
         }
     }
 
@@ -84,6 +87,39 @@ public class ShopGUIListener implements Listener {
 
         // Try to buy the item at this slot
         ShopItem shopItem = gui.getItemAtSlot(categoryId, page, slot);
+        if (shopItem == null) return;
+
+        processPurchase(player, shopItem);
+    }
+
+    private void handleEntityShopClick(Player player, int slot, ItemStack clicked) {
+        ShopGUI gui = plugin.getShopGUI();
+        String shopId = gui.getPlayerEntityShop(player.getUniqueId());
+        int page = gui.getPlayerPage(player.getUniqueId());
+
+        // Close button
+        if (slot == 49 && clicked.getType() == Material.BARRIER) {
+            player.closeInventory();
+            return;
+        }
+
+        // Previous page
+        if (slot == 45 && clicked.getType() == Material.ARROW) {
+            gui.openEntityShop(player, shopId, page - 1);
+            return;
+        }
+
+        // Next page
+        if (slot == 53 && clicked.getType() == Material.ARROW) {
+            gui.openEntityShop(player, shopId, page + 1);
+            return;
+        }
+
+        // Page info (paper) - ignore
+        if (clicked.getType() == Material.PAPER) return;
+
+        // Try to buy the item at this slot
+        ShopItem shopItem = gui.getEntityItemAtSlot(shopId, page, slot);
         if (shopItem == null) return;
 
         processPurchase(player, shopItem);

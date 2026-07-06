@@ -101,3 +101,49 @@ categories:
         display-name: "&cSteak x64"
         currency: xp-levels
         price: 2
+
+# Entity-bound shops.
+#
+# These are opened by RIGHT-CLICKING a specific entity standing at a
+# configured location - NOT from the /shop menu (they never appear there).
+# They are still edited here in the same config and reloaded live with
+# "/shop reload".
+#
+# Each entry needs:
+#   display-name : shown at the top of the shop GUI.
+#   entity:
+#     type   : entity type that must be right-clicked (e.g. VILLAGER,
+#              ARMOR_STAND, ZOMBIE). Leave blank/omit to match ANY entity
+#              type at the location.
+#     world  : world name the entity is in.
+#     x, y, z: the entity's location. Stand where the entity is and use its
+#              coordinates; the shop opens when a matching entity is within
+#              "radius" blocks of this point.
+#     radius : how close the entity must be to (x, y, z) to count as a match
+#              (default 2.0). A small radius lets you bind a shop to one
+#              specific mob without other mobs of the same type triggering it.
+#   items    : same format as the category "items" above (material, amount,
+#              display-name, lore, currency, price).
+entity-shops:
+  blacksmith:
+    display-name: "&6Blacksmith"
+    entity:
+      type: VILLAGER
+      world: world
+      x: 100.5
+      y: 64.0
+      z: -200.5
+      radius: 2.0
+    items:
+      forged-sword:
+        material: DIAMOND_SWORD
+        display-name: "&bForged Sword"
+        lore:
+          - "&7Hand-forged by the blacksmith"
+        currency: money
+        price: 1500
+      forged-axe:
+        material: DIAMOND_AXE
+        display-name: "&bForged Axe"
+        currency: orbs
+        price: 120

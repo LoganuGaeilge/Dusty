@@ -1,6 +1,7 @@
 package com.dustyrpg.shop;
 
 import com.dustyrpg.shop.data.ShopManager;
+import com.dustyrpg.shop.gui.EntityShopListener;
 import com.dustyrpg.shop.gui.ShopGUI;
 import com.dustyrpg.shop.gui.ShopGUIListener;
 import com.dustyrpg.shop.util.DustyEconomyBridge;
@@ -20,6 +21,7 @@ public class DustyShop extends JavaPlugin {
 
         getCommand("shop").setExecutor(new ShopCommand(this));
         getServer().getPluginManager().registerEvents(new ShopGUIListener(this), this);
+        getServer().getPluginManager().registerEvents(new EntityShopListener(this), this);
 
         getLogger().info("DustyShop enabled. DustyEconomy Bridge: "
                 + DustyEconomyBridge.isAvailable(getLogger()));
