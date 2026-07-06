@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,6 +41,15 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
             Pattern.compile("\"url\"\\s*:\\s*\"([^\"]+)\"");
 
     private final GiveHeadPlugin plugin;
+
+    /**
+     * Cache of the base (un-named) textured head per base64 value. Building
+     * the profile freshly for every request could yield item components that
+     * aren't byte-for-byte identical, which stops otherwise-identical heads
+     * from stacking. Cloning a single cached prototype guarantees identical
+     * components, so heads stack. Accessed only from the main thread.
+     */
+    private final Map<String, ItemStack> texturedHeadCache = new HashMap<>();
 
     public GiveHeadCommand(GiveHeadPlugin plugin) {
         this.plugin = plugin;
@@ -165,6 +175,26 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
      * running.
      */
     private ItemStack buildTexturedHead(String base64Texture, String headNameText) {
+        ItemStack prototype = texturedHeadCache.get(base64Texture);
+        if (prototype == null) {
+            prototype = createTexturedHead(base64Texture);
+            if (prototype == null) {
+                return null;
+            }
+            texturedHeadCache.put(base64Texture, prototype);
+        }
+
+        ItemStack skull = prototype.clone();
+        SkullMeta meta = (SkullMeta) skull.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(Text.color(headNameText + " Head"));
+            skull.setItemMeta(meta);
+        }
+        return skull;
+    }
+
+    /** Builds the base (un-named) textured head for a base64 value, or null on failure. */
+    private ItemStack createTexturedHead(String base64Texture) {
         ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) skull.getItemMeta();
         if (meta == null) return null;
@@ -179,7 +209,14 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
                 return null;
             }
 
-            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID(), "");
+            // Derive the profile UUID deterministically from the texture so
+            // that identical textures produce identical profiles. Player
+            // heads only stack when their owner profiles match, so a random
+            // UUID per head (the old behaviour) meant base64 heads never
+            // stacked even when they were visually identical.
+            UUID profileId = UUID.nameUUIDFromBytes(
+                    base64Texture.trim().getBytes(StandardCharsets.UTF_8));
+            PlayerProfile profile = Bukkit.createPlayerProfile(profileId, "");
             PlayerTextures textures = profile.getTextures();
             textures.setSkin(new URL(matcher.group(1)));
             profile.setTextures(textures);
@@ -195,7 +232,6 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
             return null;
         }
 
-        meta.setDisplayName(Text.color(headNameText + " Head"));
         skull.setItemMeta(meta);
         return skull;
     }
