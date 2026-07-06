@@ -227,7 +227,7 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
 
         try {
             String decoded = new String(
-                    Base64.getDecoder().decode(base64Texture.trim()), StandardCharsets.UTF_8);
+                    Base64.getDecoder().decode(normalizeBase64(base64Texture)), StandardCharsets.UTF_8);
             Matcher matcher = TEXTURE_URL_PATTERN.matcher(decoded);
             if (!matcher.find()) {
                 plugin.getLogger().warning(
@@ -260,6 +260,30 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
 
         skull.setItemMeta(meta);
         return skull;
+    }
+
+    /**
+     * Normalises a base64 texture value so it decodes with Java's strict
+     * {@link Base64} decoder, which rejects any input whose length isn't a
+     * multiple of 4 (throwing "Input byte array has wrong 4-byte ending
+     * unit"). Values copy-pasted from head databases frequently arrive with
+     * missing or malformed trailing '=' padding - e.g. the skeleton-horse
+     * value shipped in config.yml ended in a single '=' where two were
+     * required - which silently broke those heads. We strip any surrounding
+     * whitespace and existing '=' padding, then re-pad to the correct length.
+     */
+    private static String normalizeBase64(String value) {
+        String trimmed = value.trim();
+        int end = trimmed.length();
+        while (end > 0 && trimmed.charAt(end - 1) == '=') {
+            end--;
+        }
+        String body = trimmed.substring(0, end);
+        int remainder = body.length() % 4;
+        if (remainder == 0) {
+            return body;
+        }
+        return body + "====".substring(remainder);
     }
 
     @Override
