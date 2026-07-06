@@ -1,6 +1,7 @@
 package com.simpleah.plugin;
 
 import com.simpleah.plugin.util.DustyEconomyBridge;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -55,22 +56,18 @@ public class AHGUIListener implements Listener {
     private void handleAHClick(Player player, int slot, ItemStack clicked) {
         AHSession session = ahCommand.getOrCreateSession(player.getUniqueId());
 
-        // Page indicator (paper at slot 4) — ignore
         if (slot == 4 && clicked.getType() == Material.PAPER) return;
 
-        // Previous page
         if (slot == AHCommand.SLOT_PREV && clicked.getType() == Material.ARROW) {
             ahCommand.openMainGUI(player, session.getPage() - 1);
             return;
         }
 
-        // Next page
         if (slot == AHCommand.SLOT_NEXT && clicked.getType() == Material.ARROW) {
             ahCommand.openMainGUI(player, session.getPage() + 1);
             return;
         }
 
-        // Sort button
         if (slot == AHCommand.SLOT_SORT && clicked.getType() == Material.HOPPER) {
             session.setSortMode(session.getSortMode().next());
             session.setPage(0);
@@ -78,14 +75,12 @@ public class AHGUIListener implements Listener {
             return;
         }
 
-        // Cancelled items button
         if (slot == AHCommand.SLOT_CANCELLED && clicked.getType() == Material.BARRIER) {
             player.closeInventory();
             ahCommand.openCancelledGUI(player);
             return;
         }
 
-        // Search button (click clears search)
         if (slot == AHCommand.SLOT_SEARCH && clicked.getType() == Material.NAME_TAG) {
             if (session.hasSearch()) {
                 session.clearSearch();
@@ -99,7 +94,6 @@ public class AHGUIListener implements Listener {
             return;
         }
 
-        // Item slot — try to buy or cancel
         int itemIndex = getItemSlotIndex(slot);
         if (itemIndex < 0) return;
 
@@ -109,7 +103,12 @@ public class AHGUIListener implements Listener {
 
         AuctionItem target = filtered.get(actualIndex);
 
+        // Seller cancels their own listing
         if (target.getSeller().equals(player.getUniqueId())) {
+            if (target.hasBid()) {
+                // Refund current bidder before cancelling
+                manager.refundBidder(target);
+            }
             manager.cancelAuction(target);
             player.closeInventory();
             player.sendMessage(ChatColor.YELLOW
@@ -117,7 +116,14 @@ public class AHGUIListener implements Listener {
             return;
         }
 
-        // Purchase flow
+        if (target.isBin()) {
+            handleBINPurchase(player, target);
+        } else {
+            handleAuctionBid(player, target);
+        }
+    }
+
+    private void handleBINPurchase(Player player, AuctionItem target) {
         String currency = target.getCurrencyKey();
         double price = target.getPrice();
 
@@ -148,6 +154,55 @@ public class AHGUIListener implements Listener {
                 + AHCommand.formatCurrency(currency, price) + ChatColor.GREEN + "!");
     }
 
+    private void handleAuctionBid(Player player, AuctionItem target) {
+        if (target.getCurrentBidder() != null && target.getCurrentBidder().equals(player.getUniqueId())) {
+            player.sendMessage(ChatColor.YELLOW + "You are already the highest bidder!");
+            return;
+        }
+
+        String currency = target.getCurrencyKey();
+        double bidAmount = target.getMinimumBid();
+
+        Double balance = DustyEconomyBridge.getBalance(plugin.getLogger(), player.getUniqueId(), currency);
+        if (balance == null) {
+            player.sendMessage(ChatColor.RED + "Unable to reach the economy plugin. Try again.");
+            return;
+        }
+
+        if (balance < bidAmount) {
+            player.sendMessage(ChatColor.RED + "You need at least "
+                    + AHCommand.formatCurrency(currency, bidAmount) + ChatColor.RED
+                    + " to bid! You have " + AHCommand.formatCurrency(currency, balance)
+                    + ChatColor.RED + ".");
+            return;
+        }
+
+        if (!DustyEconomyBridge.removeBalance(plugin.getLogger(), player.getUniqueId(), currency, bidAmount)) {
+            player.sendMessage(ChatColor.RED + "Unable to process bid. Try again.");
+            return;
+        }
+
+        // Refund previous bidder
+        if (target.hasBid()) {
+            manager.refundBidder(target);
+        }
+
+        target.setCurrentBid(bidAmount);
+        target.setCurrentBidder(player.getUniqueId());
+
+        player.closeInventory();
+        player.sendMessage(ChatColor.GREEN + "Bid placed: "
+                + AHCommand.formatCurrency(currency, bidAmount) + ChatColor.GREEN + "!");
+
+        // Notify seller if online
+        Player seller = Bukkit.getPlayer(target.getSeller());
+        if (seller != null && seller.isOnline()) {
+            seller.sendMessage(ChatColor.YELLOW + player.getName() + " bid "
+                    + AHCommand.formatCurrency(currency, bidAmount) + ChatColor.YELLOW
+                    + " on your " + ChatColor.WHITE + target.getItemName() + ChatColor.YELLOW + "!");
+        }
+    }
+
     private void handleCancelledClick(Player player, ItemStack clicked) {
         manager.removeCancelledItem(player.getUniqueId(), clicked);
         player.getInventory().addItem(clicked);
@@ -164,6 +219,6 @@ public class AHGUIListener implements Listener {
 
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
-        // Don't remove session on close so search/sort state persists across opens
+        // Session state persists across opens for search/sort
     }
 }
