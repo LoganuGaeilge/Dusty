@@ -1,6 +1,7 @@
 package com.dustyrpg.shop.gui;
 
 import com.dustyrpg.shop.DustyShop;
+import com.dustyrpg.shop.data.EntityShop;
 import com.dustyrpg.shop.data.ShopCategory;
 import com.dustyrpg.shop.data.ShopItem;
 import org.bukkit.Bukkit;
@@ -21,6 +22,7 @@ public class ShopGUI {
 
     public static final String MAIN_TITLE = "Shop";
     public static final String CATEGORY_PREFIX = "Shop - ";
+    public static final String ENTITY_PREFIX = "Merchant: ";
     public static final int ITEMS_PER_PAGE = 28;
 
     private static final int[] ITEM_SLOTS = {
@@ -32,6 +34,7 @@ public class ShopGUI {
 
     private final DustyShop plugin;
     private final Map<UUID, String> playerCategory = new HashMap<>();
+    private final Map<UUID, String> playerEntityShop = new HashMap<>();
     private final Map<UUID, Integer> playerPage = new HashMap<>();
 
     public ShopGUI(DustyShop plugin) {
@@ -40,6 +43,7 @@ public class ShopGUI {
 
     public void openMainMenu(Player player) {
         playerCategory.remove(player.getUniqueId());
+        playerEntityShop.remove(player.getUniqueId());
         playerPage.remove(player.getUniqueId());
 
         Inventory gui = Bukkit.createInventory(null, 27, MAIN_TITLE);
@@ -71,19 +75,77 @@ public class ShopGUI {
         if (category == null) return;
 
         playerCategory.put(player.getUniqueId(), categoryId);
+        playerEntityShop.remove(player.getUniqueId());
         playerPage.put(player.getUniqueId(), page);
 
         List<ShopItem> items = category.getItems();
-        int totalPages = Math.max(1, (int) Math.ceil((double) items.size() / ITEMS_PER_PAGE));
-        if (page >= totalPages) page = totalPages - 1;
-        if (page < 0) page = 0;
+        int totalPages = totalPages(items);
+        page = clampPage(page, totalPages);
+        playerPage.put(player.getUniqueId(), page);
 
-        String title = CATEGORY_PREFIX + ChatColor.stripColor(category.getDisplayName());
-        if (title.length() > 32) title = title.substring(0, 32);
-
+        String title = truncateTitle(CATEGORY_PREFIX + ChatColor.stripColor(category.getDisplayName()));
         Inventory gui = Bukkit.createInventory(null, 54, title);
         fillBorder(gui, 54);
+        renderItemsPage(gui, items, page);
 
+        // Back button
+        ItemStack back = new ItemStack(Material.ARROW);
+        ItemMeta backMeta = back.getItemMeta();
+        if (backMeta != null) {
+            backMeta.setDisplayName(ChatColor.RED + "Back to Categories");
+            back.setItemMeta(backMeta);
+        }
+        gui.setItem(49, back);
+
+        addPagination(gui, page, totalPages);
+        player.openInventory(gui);
+    }
+
+    public void openEntityShop(Player player, String shopId, int page) {
+        EntityShop shop = plugin.getShopManager().getEntityShop(shopId);
+        if (shop == null) return;
+
+        playerEntityShop.put(player.getUniqueId(), shopId);
+        playerCategory.remove(player.getUniqueId());
+
+        List<ShopItem> items = shop.getItems();
+        int totalPages = totalPages(items);
+        page = clampPage(page, totalPages);
+        playerPage.put(player.getUniqueId(), page);
+
+        String title = truncateTitle(ENTITY_PREFIX + ChatColor.stripColor(shop.getDisplayName()));
+        Inventory gui = Bukkit.createInventory(null, 54, title);
+        fillBorder(gui, 54);
+        renderItemsPage(gui, items, page);
+
+        // Close button (entity shops are standalone - no category menu to go back to)
+        ItemStack close = new ItemStack(Material.BARRIER);
+        ItemMeta closeMeta = close.getItemMeta();
+        if (closeMeta != null) {
+            closeMeta.setDisplayName(ChatColor.RED + "Close");
+            close.setItemMeta(closeMeta);
+        }
+        gui.setItem(49, close);
+
+        addPagination(gui, page, totalPages);
+        player.openInventory(gui);
+    }
+
+    private int totalPages(List<ShopItem> items) {
+        return Math.max(1, (int) Math.ceil((double) items.size() / ITEMS_PER_PAGE));
+    }
+
+    private int clampPage(int page, int totalPages) {
+        if (page >= totalPages) page = totalPages - 1;
+        if (page < 0) page = 0;
+        return page;
+    }
+
+    private String truncateTitle(String title) {
+        return title.length() > 32 ? title.substring(0, 32) : title;
+    }
+
+    private void renderItemsPage(Inventory gui, List<ShopItem> items, int page) {
         int startIndex = page * ITEMS_PER_PAGE;
         for (int i = 0; i < ITEMS_PER_PAGE && (startIndex + i) < items.size(); i++) {
             ShopItem shopItem = items.get(startIndex + i);
@@ -102,16 +164,9 @@ public class ShopGUI {
             }
             gui.setItem(ITEM_SLOTS[i], display);
         }
+    }
 
-        // Back button
-        ItemStack back = new ItemStack(Material.ARROW);
-        ItemMeta backMeta = back.getItemMeta();
-        if (backMeta != null) {
-            backMeta.setDisplayName(ChatColor.RED + "Back to Categories");
-            back.setItemMeta(backMeta);
-        }
-        gui.setItem(49, back);
-
+    private void addPagination(Inventory gui, int page, int totalPages) {
         // Previous page
         if (page > 0) {
             ItemStack prev = new ItemStack(Material.ARROW);
@@ -148,12 +203,14 @@ public class ShopGUI {
             pageInfo.setItemMeta(pageMeta);
         }
         gui.setItem(47, pageInfo);
-
-        player.openInventory(gui);
     }
 
     public String getPlayerCategory(UUID uuid) {
         return playerCategory.get(uuid);
+    }
+
+    public String getPlayerEntityShop(UUID uuid) {
+        return playerEntityShop.get(uuid);
     }
 
     public int getPlayerPage(UUID uuid) {
@@ -163,7 +220,16 @@ public class ShopGUI {
     public ShopItem getItemAtSlot(String categoryId, int page, int slot) {
         ShopCategory category = plugin.getShopManager().getCategory(categoryId);
         if (category == null) return null;
+        return itemAtSlot(category.getItems(), page, slot);
+    }
 
+    public ShopItem getEntityItemAtSlot(String shopId, int page, int slot) {
+        EntityShop shop = plugin.getShopManager().getEntityShop(shopId);
+        if (shop == null) return null;
+        return itemAtSlot(shop.getItems(), page, slot);
+    }
+
+    private ShopItem itemAtSlot(List<ShopItem> items, int page, int slot) {
         int slotIndex = -1;
         for (int i = 0; i < ITEM_SLOTS.length; i++) {
             if (ITEM_SLOTS[i] == slot) {
@@ -174,13 +240,13 @@ public class ShopGUI {
         if (slotIndex < 0) return null;
 
         int itemIndex = page * ITEMS_PER_PAGE + slotIndex;
-        List<ShopItem> items = category.getItems();
         if (itemIndex < 0 || itemIndex >= items.size()) return null;
         return items.get(itemIndex);
     }
 
     public void cleanup(UUID uuid) {
         playerCategory.remove(uuid);
+        playerEntityShop.remove(uuid);
         playerPage.remove(uuid);
     }
 
