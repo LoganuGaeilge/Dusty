@@ -1,0 +1,34 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.yourserver'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+}
+
+dependencies {
+    // Match this to your target server version - same as CustomEnchants.
+    compileOnly 'org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT'
+}
+
+processResources {
+    filteringCharset = 'UTF-8'
+}
+
+tasks.named('jar') {
+    archiveBaseName.set('GiveHead')
+    archiveVersion.set(project.version.toString())
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
