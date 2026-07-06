@@ -51,6 +51,15 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
      */
     private final Map<String, ItemStack> texturedHeadCache = new HashMap<>();
 
+    /**
+     * Same idea as {@link #texturedHeadCache}, but for the player-skin path
+     * (e.g. {@code MHF_Zombie}). A resolved skin already has a stable, per-skin
+     * profile UUID, but cloning one cached prototype per skin guarantees the
+     * item components are byte-for-byte identical so these heads always stack.
+     * Accessed only from the main thread.
+     */
+    private final Map<String, ItemStack> skinHeadCache = new HashMap<>();
+
     public GiveHeadCommand(GiveHeadPlugin plugin) {
         this.plugin = plugin;
     }
@@ -109,7 +118,7 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
 
         PlayerProfile cached = skins.getCached(skinName);
         if (cached != null) {
-            deliver(sender, target, cached, headNameText);
+            deliver(sender, target, skinName, cached, headNameText);
             return;
         }
 
@@ -119,12 +128,13 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
             if (stillOnline == null) {
                 return;
             }
-            deliver(sender, stillOnline, profile, headNameText);
+            deliver(sender, stillOnline, skinName, profile, headNameText);
         }, runnable -> Bukkit.getScheduler().runTask(plugin, runnable));
     }
 
-    private void deliver(CommandSender sender, Player target, PlayerProfile profile, String headNameText) {
-        ItemStack head = buildHead(profile, headNameText);
+    private void deliver(CommandSender sender, Player target, String skinName,
+                         PlayerProfile profile, String headNameText) {
+        ItemStack head = buildHead(skinName, profile, headNameText);
         deliverItem(sender, target, head, headNameText);
     }
 
@@ -146,11 +156,27 @@ public final class GiveHeadCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    private ItemStack buildHead(PlayerProfile profile, String headNameText) {
-        ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
+    private ItemStack buildHead(String skinName, PlayerProfile profile, String headNameText) {
+        // Cache one fully-resolved prototype per skin (only once the profile
+        // is texture-complete, so a failed lookup isn't cached and can still
+        // resolve later). Cloning it keeps components byte-identical -> stacks.
+        String key = skinName.toLowerCase();
+        ItemStack prototype = skinHeadCache.get(key);
+        if (prototype == null) {
+            prototype = new ItemStack(Material.PLAYER_HEAD);
+            SkullMeta protoMeta = (SkullMeta) prototype.getItemMeta();
+            if (protoMeta != null) {
+                protoMeta.setOwnerProfile(profile);
+                prototype.setItemMeta(protoMeta);
+            }
+            if (profile.isComplete()) {
+                skinHeadCache.put(key, prototype);
+            }
+        }
+
+        ItemStack skull = prototype.clone();
         SkullMeta meta = (SkullMeta) skull.getItemMeta();
         if (meta != null) {
-            meta.setOwnerProfile(profile);
             meta.setDisplayName(Text.color(headNameText + " Head"));
             skull.setItemMeta(meta);
         }
