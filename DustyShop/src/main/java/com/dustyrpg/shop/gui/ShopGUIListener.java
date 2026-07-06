@@ -10,7 +10,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
@@ -128,10 +128,7 @@ public class ShopGUIListener implements Listener {
     }
 
     @EventHandler
-    public void onInventoryClose(InventoryCloseEvent event) {
-        String title = event.getView().getTitle();
-        if (title.equals(ShopGUI.MAIN_TITLE) || title.startsWith(ShopGUI.CATEGORY_PREFIX)) {
-            plugin.getShopGUI().cleanup(event.getPlayer().getUniqueId());
-        }
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        plugin.getShopGUI().cleanup(event.getPlayer().getUniqueId());
     }
 }

@@ -20,9 +20,12 @@ public class SimpleAH extends JavaPlugin implements Listener {
 
         AHCommand ahCommand = new AHCommand(this, auctionManager);
         getCommand("ah").setExecutor(ahCommand);
+        getCommand("ah").setTabCompleter(ahCommand);
         getServer().getPluginManager().registerEvents(
                 new AHGUIListener(this, auctionManager, ahCommand), this);
         getServer().getPluginManager().registerEvents(this, this);
+
+        auctionManager.startExpiryTask();
 
         getLogger().info("SimpleAH initialized. DustyEconomy Bridge: "
                 + DustyEconomyBridge.isAvailable(getLogger()));
@@ -31,7 +34,7 @@ public class SimpleAH extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         if (auctionManager != null) {
-            auctionManager.saveData();
+            auctionManager.processShutdown();
         }
     }
 

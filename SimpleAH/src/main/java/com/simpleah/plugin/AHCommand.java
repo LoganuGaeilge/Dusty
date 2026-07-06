@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -20,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class AHCommand implements CommandExecutor {
+public class AHCommand implements CommandExecutor, TabCompleter {
 
     public static final String AH_TITLE_PREFIX = "Auction House";
     public static final String CANCELLED_TITLE = "AH - Cancelled Items";
@@ -51,6 +52,41 @@ public class AHCommand implements CommandExecutor {
     }
 
     @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        List<String> completions = new ArrayList<>();
+
+        if (args.length == 1) {
+            String partial = args[0].toLowerCase();
+            for (String sub : new String[]{"sell", "bin", "auction", "cancelled", "search"}) {
+                if (sub.startsWith(partial)) completions.add(sub);
+            }
+            return completions;
+        }
+
+        String sub = args[0].toLowerCase();
+
+        if (sub.equals("sell") || sub.equals("bin") || sub.equals("auction")) {
+            if (args.length == 2) {
+                completions.add("<price>");
+                return completions;
+            }
+            if (args.length == 3) {
+                String partial = args[2].toLowerCase();
+                for (String c : VALID_CURRENCIES) {
+                    if (c.startsWith(partial)) completions.add(c);
+                }
+                return completions;
+            }
+            if (sub.equals("auction") && args.length == 4) {
+                completions.add("<hours>");
+                return completions;
+            }
+        }
+
+        return completions;
+    }
+
+    @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
             sender.sendMessage("Only players can execute Auction House commands.");
@@ -64,7 +100,11 @@ public class AHCommand implements CommandExecutor {
         }
 
         if (args[0].equalsIgnoreCase("sell") || args[0].equalsIgnoreCase("bin")) {
-            return handleSell(player, args);
+            return handleSell(player, args, true);
+        }
+
+        if (args[0].equalsIgnoreCase("auction")) {
+            return handleSell(player, args, false);
         }
 
         if (args[0].equalsIgnoreCase("cancelled") || args[0].equalsIgnoreCase("expired")) {
@@ -89,13 +129,17 @@ public class AHCommand implements CommandExecutor {
             return true;
         }
 
-        player.sendMessage(ChatColor.RED + "Usage: /ah [sell|bin <price> [currency]|cancelled|search <query>]");
+        player.sendMessage(ChatColor.RED + "Usage: /ah [sell|bin|auction <price> [currency] [hours]|cancelled|search <query>]");
         return true;
     }
 
-    private boolean handleSell(Player player, String[] args) {
+    private boolean handleSell(Player player, String[] args, boolean isBIN) {
         if (args.length < 2) {
-            player.sendMessage(ChatColor.RED + "Usage: /ah " + args[0] + " <price> [currency]");
+            if (isBIN) {
+                player.sendMessage(ChatColor.RED + "Usage: /ah " + args[0] + " <price> [currency]");
+            } else {
+                player.sendMessage(ChatColor.RED + "Usage: /ah auction <price> [currency] [hours]");
+            }
             player.sendMessage(ChatColor.GRAY + "Currencies: money (default), orbs, credits");
             return true;
         }
@@ -136,9 +180,25 @@ public class AHCommand implements CommandExecutor {
             }
         }
 
-        boolean isBIN = args[0].equalsIgnoreCase("bin");
-        int configHours = plugin.getConfig().getInt("bin-duration-hours", 48);
-        long expiresAt = System.currentTimeMillis() + (configHours * 3600000L);
+        int durationHours = plugin.getConfig().getInt("bin-duration-hours", 48);
+        if (!isBIN && args.length >= 4) {
+            try {
+                durationHours = Integer.parseInt(args[3]);
+            } catch (NumberFormatException e) {
+                player.sendMessage(ChatColor.RED + "Invalid number for hours.");
+                return true;
+            }
+            if (durationHours < 1) {
+                player.sendMessage(ChatColor.RED + "Auction duration must be at least 1 hour!");
+                return true;
+            }
+            if (durationHours > 48) {
+                player.sendMessage(ChatColor.RED + "Auction duration cannot exceed 48 hours!");
+                return true;
+            }
+        }
+
+        long expiresAt = System.currentTimeMillis() + (durationHours * 3600000L);
 
         ItemStack listedItem = item.clone();
         listedItem.setAmount(1);
@@ -154,8 +214,14 @@ public class AHCommand implements CommandExecutor {
             player.getInventory().setItemInMainHand(null);
         }
 
-        player.sendMessage(ChatColor.GREEN + "Listed on the AH for "
-                + formatCurrency(currencyKey, price) + ChatColor.GREEN + "!");
+        if (isBIN) {
+            player.sendMessage(ChatColor.GREEN + "Listed as BIN for "
+                    + formatCurrency(currencyKey, price) + ChatColor.GREEN + "!");
+        } else {
+            player.sendMessage(ChatColor.GREEN + "Auction created! Starting bid: "
+                    + formatCurrency(currencyKey, price) + ChatColor.GREEN
+                    + " | Duration: " + durationHours + "h");
+        }
         return true;
     }
 
@@ -193,15 +259,35 @@ public class AHCommand implements CommandExecutor {
                 lore.add(ChatColor.DARK_GRAY + "--------------------");
                 lore.add(ChatColor.YELLOW + "Seller: " + ChatColor.WHITE
                         + Bukkit.getOfflinePlayer(auctionItem.getSeller()).getName());
-                lore.add(ChatColor.YELLOW + "Price: "
-                        + formatCurrency(auctionItem.getCurrencyKey(), auctionItem.getPrice()));
-                lore.add(ChatColor.YELLOW + "Type: " + ChatColor.AQUA
-                        + (auctionItem.isBin() ? "BIN (Buy It Now)" : "Auction"));
+
+                if (auctionItem.isBin()) {
+                    lore.add(ChatColor.YELLOW + "Price: "
+                            + formatCurrency(auctionItem.getCurrencyKey(), auctionItem.getPrice()));
+                    lore.add(ChatColor.YELLOW + "Type: " + ChatColor.AQUA + "BIN (Buy It Now)");
+                } else {
+                    if (auctionItem.hasBid()) {
+                        lore.add(ChatColor.YELLOW + "Current Bid: "
+                                + formatCurrency(auctionItem.getCurrencyKey(), auctionItem.getCurrentBid()));
+                        lore.add(ChatColor.YELLOW + "Bidder: " + ChatColor.WHITE
+                                + Bukkit.getOfflinePlayer(auctionItem.getCurrentBidder()).getName());
+                    } else {
+                        lore.add(ChatColor.YELLOW + "Starting Bid: "
+                                + formatCurrency(auctionItem.getCurrencyKey(), auctionItem.getPrice()));
+                        lore.add(ChatColor.GRAY + "No bids yet");
+                    }
+                    long remaining = auctionItem.getExpiresAt() - System.currentTimeMillis();
+                    lore.add(ChatColor.YELLOW + "Time Left: " + ChatColor.WHITE + formatTime(remaining));
+                    lore.add(ChatColor.YELLOW + "Type: " + ChatColor.GOLD + "Auction");
+                }
+
                 lore.add("");
                 if (auctionItem.getSeller().equals(player.getUniqueId())) {
                     lore.add(ChatColor.RED + "Click to cancel listing");
-                } else {
+                } else if (auctionItem.isBin()) {
                     lore.add(ChatColor.GREEN + "Click to purchase!");
+                } else {
+                    double minBid = auctionItem.getMinimumBid();
+                    lore.add(ChatColor.GREEN + "Click to bid " + formatCurrency(auctionItem.getCurrencyKey(), minBid));
                 }
                 meta.setLore(lore);
                 display.setItemMeta(meta);
@@ -210,24 +296,20 @@ public class AHCommand implements CommandExecutor {
         }
 
         // Bottom navigation bar
-        // Previous page
         if (page > 0) {
             gui.setItem(SLOT_PREV, createNavItem(Material.ARROW,
                     ChatColor.YELLOW + "Previous Page",
                     ChatColor.GRAY + "Page " + page + "/" + totalPages));
         }
 
-        // Sort button
         gui.setItem(SLOT_SORT, createNavItem(Material.HOPPER,
                 ChatColor.GOLD + "Sort: " + session.getSortMode().getDisplay(),
                 ChatColor.GRAY + "Click to change sort"));
 
-        // Cancelled items button
         gui.setItem(SLOT_CANCELLED, createNavItem(Material.BARRIER,
                 ChatColor.RED + "Cancelled/Expired Items",
                 ChatColor.GRAY + "View your cancelled listings"));
 
-        // Search button
         if (session.hasSearch()) {
             gui.setItem(SLOT_SEARCH, createNavItem(Material.NAME_TAG,
                     ChatColor.AQUA + "Search: " + session.getSearchQuery(),
@@ -238,14 +320,12 @@ public class AHCommand implements CommandExecutor {
                     ChatColor.GRAY + "Use /ah search <query>"));
         }
 
-        // Next page
         if (page < totalPages - 1) {
             gui.setItem(SLOT_NEXT, createNavItem(Material.ARROW,
                     ChatColor.YELLOW + "Next Page",
                     ChatColor.GRAY + "Page " + (page + 2) + "/" + totalPages));
         }
 
-        // Page indicator in the title area (slot 4)
         gui.setItem(4, createNavItem(Material.PAPER,
                 ChatColor.WHITE + "Page " + (page + 1) + "/" + totalPages,
                 ChatColor.GRAY + "" + filtered.size() + " listings"));
@@ -351,7 +431,7 @@ public class AHCommand implements CommandExecutor {
         if (price == Math.floor(price)) {
             formatted = String.valueOf((long) price);
         } else {
-            formatted = String.valueOf(price);
+            formatted = String.format("%.2f", price);
         }
 
         switch (currencyKey.toLowerCase()) {
@@ -366,5 +446,19 @@ public class AHCommand implements CommandExecutor {
             default:
                 return formatted + " " + currencyKey;
         }
+    }
+
+    static String formatTime(long millis) {
+        if (millis <= 0) return "Expired";
+        long totalSeconds = millis / 1000;
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        if (hours > 0) {
+            return hours + "h " + minutes + "m";
+        }
+        if (minutes > 0) {
+            return minutes + "m";
+        }
+        return "<1m";
     }
 }

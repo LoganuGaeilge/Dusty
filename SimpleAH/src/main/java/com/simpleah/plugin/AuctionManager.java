@@ -2,11 +2,13 @@ package com.simpleah.plugin;
 
 import com.simpleah.plugin.util.DustyEconomyBridge;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,6 +33,64 @@ public class AuctionManager {
         loadData();
     }
 
+    public void startExpiryTask() {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                processExpiredAuctions();
+            }
+        }.runTaskTimer(plugin, 600L, 600L); // every 30 seconds
+    }
+
+    private void processExpiredAuctions() {
+        long now = System.currentTimeMillis();
+        List<AuctionItem> expired = new ArrayList<>();
+
+        for (AuctionItem auction : activeAuctions) {
+            if (auction.getExpiresAt() <= now) {
+                expired.add(auction);
+            }
+        }
+
+        for (AuctionItem auction : expired) {
+            activeAuctions.remove(auction);
+
+            if (!auction.isBin() && auction.hasBid()) {
+                // Auction with bids: winner gets item, seller gets paid
+                UUID winnerId = auction.getCurrentBidder();
+                double finalBid = auction.getCurrentBid();
+
+                // Give item to winner
+                Player winner = Bukkit.getPlayer(winnerId);
+                if (winner != null && winner.isOnline()) {
+                    winner.getInventory().addItem(auction.getItem());
+                    winner.sendMessage(ChatColor.GREEN + "You won the auction for "
+                            + auction.getItemName() + ChatColor.GREEN + " at "
+                            + AHCommand.formatCurrency(auction.getCurrencyKey(), finalBid)
+                            + ChatColor.GREEN + "!");
+                } else {
+                    // Item goes to cancelled bin for winner to claim
+                    cancelledItems.computeIfAbsent(winnerId, k -> new ArrayList<>())
+                            .add(auction.getItem());
+                }
+
+                // Pay seller
+                processSale(auction.getSeller(), auction.getCurrencyKey(), finalBid);
+            } else {
+                // BIN expired or auction with no bids: return to seller's cancelled bin
+                cancelledItems.computeIfAbsent(auction.getSeller(), k -> new ArrayList<>())
+                        .add(auction.getItem());
+
+                Player seller = Bukkit.getPlayer(auction.getSeller());
+                if (seller != null && seller.isOnline()) {
+                    seller.sendMessage(ChatColor.YELLOW + "Your listing for "
+                            + auction.getItemName() + ChatColor.YELLOW
+                            + " has expired. Claim it from /ah cancelled.");
+                }
+            }
+        }
+    }
+
     public void addAuction(AuctionItem item) {
         activeAuctions.add(item);
     }
@@ -52,6 +112,26 @@ public class AuctionManager {
 
     public List<ItemStack> getCancelledItems(UUID uuid) {
         return cancelledItems.getOrDefault(uuid, new ArrayList<>());
+    }
+
+    public void refundBidder(AuctionItem auction) {
+        if (!auction.hasBid()) return;
+        UUID bidderId = auction.getCurrentBidder();
+        String currency = auction.getCurrencyKey();
+        double amount = auction.getCurrentBid();
+
+        Player bidder = Bukkit.getPlayer(bidderId);
+        if (bidder != null && bidder.isOnline()) {
+            if (DustyEconomyBridge.addBalance(plugin.getLogger(), bidderId, currency, amount)) {
+                bidder.sendMessage(ChatColor.YELLOW + "Your bid of "
+                        + AHCommand.formatCurrency(currency, amount) + ChatColor.YELLOW
+                        + " has been refunded.");
+            } else {
+                addOfflineEarning(bidderId, currency, amount);
+            }
+        } else {
+            addOfflineEarning(bidderId, currency, amount);
+        }
     }
 
     public void processSale(UUID sellerId, String currencyKey, double amount) {
@@ -109,6 +189,16 @@ public class AuctionManager {
                 .add(new OfflineEarning(currencyKey, amount));
     }
 
+    public void processShutdown() {
+        // Refund all active auction bids on shutdown to prevent loss
+        for (AuctionItem auction : activeAuctions) {
+            if (!auction.isBin() && auction.hasBid()) {
+                addOfflineEarning(auction.getCurrentBidder(), auction.getCurrencyKey(), auction.getCurrentBid());
+            }
+        }
+        saveData();
+    }
+
     private void loadData() {
         if (!dataFile.exists()) return;
 
@@ -129,7 +219,14 @@ public class AuctionManager {
                     boolean isBin = entry.getBoolean("bin");
                     long expiresAt = entry.getLong("expiresAt");
                     if (item != null) {
-                        activeAuctions.add(new AuctionItem(seller, item, price, currencyKey, isBin, expiresAt));
+                        AuctionItem auctionItem = new AuctionItem(seller, item, price, currencyKey, isBin, expiresAt);
+                        double currentBid = entry.getDouble("currentBid", 0);
+                        String bidderStr = entry.getString("currentBidder");
+                        if (currentBid > 0 && bidderStr != null && !bidderStr.isEmpty()) {
+                            auctionItem.setCurrentBid(currentBid);
+                            auctionItem.setCurrentBidder(UUID.fromString(bidderStr));
+                        }
+                        activeAuctions.add(auctionItem);
                     }
                 } catch (Exception e) {
                     plugin.getLogger().warning("Skipped a corrupt active auction entry '" + key + "' in data.yml");
@@ -164,7 +261,6 @@ public class AuctionManager {
                     UUID uuid = UUID.fromString(uuidKey);
                     ConfigurationSection playerEarnings = earningsSection.getConfigurationSection(uuidKey);
                     if (playerEarnings == null) {
-                        // Legacy format: single double value (always "money")
                         double amount = earningsSection.getDouble(uuidKey);
                         if (amount > 0) {
                             addOfflineEarning(uuid, "money", amount);
@@ -199,6 +295,10 @@ public class AuctionManager {
             data.set(path + ".currencyKey", auction.getCurrencyKey());
             data.set(path + ".bin", auction.isBin());
             data.set(path + ".expiresAt", auction.getExpiresAt());
+            if (auction.hasBid()) {
+                data.set(path + ".currentBid", auction.getCurrentBid());
+                data.set(path + ".currentBidder", auction.getCurrentBidder().toString());
+            }
         }
 
         for (Map.Entry<UUID, List<ItemStack>> entry : cancelledItems.entrySet()) {
