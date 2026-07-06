@@ -8,14 +8,17 @@ public class AuctionItem {
     private final UUID seller;
     private final ItemStack item;
     private final double price;
+    private final String currencyKey;
     private final boolean isBin;
     private final long expiresAt;
 
-    public AuctionItem(UUID seller, ItemStack item, double price, boolean isBin, long expiresAt) {
+    public AuctionItem(UUID seller, ItemStack item, double price, String currencyKey,
+                       boolean isBin, long expiresAt) {
         this.id = UUID.randomUUID();
         this.seller = seller;
         this.item = item;
         this.price = price;
+        this.currencyKey = currencyKey;
         this.isBin = isBin;
         this.expiresAt = expiresAt;
     }
@@ -24,6 +27,23 @@ public class AuctionItem {
     public UUID getSeller() { return seller; }
     public ItemStack getItem() { return item; }
     public double getPrice() { return price; }
+    public String getCurrencyKey() { return currencyKey; }
     public boolean isBin() { return isBin; }
     public long getExpiresAt() { return expiresAt; }
+
+    public String getItemName() {
+        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+            return item.getItemMeta().getDisplayName();
+        }
+        return formatMaterialName(item.getType().name());
+    }
+
+    private static String formatMaterialName(String name) {
+        StringBuilder sb = new StringBuilder();
+        for (String part : name.split("_")) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(part.charAt(0)).append(part.substring(1).toLowerCase());
+        }
+        return sb.toString();
+    }
 }

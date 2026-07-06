@@ -19,7 +19,7 @@ public class AuctionManager {
 
     private final List<AuctionItem> activeAuctions = new ArrayList<>();
     private final Map<UUID, List<ItemStack>> cancelledItems = new HashMap<>();
-    private final Map<UUID, Double> offlineEarnings = new HashMap<>();
+    private final Map<UUID, List<OfflineEarning>> offlineEarnings = new HashMap<>();
 
     public AuctionManager(SimpleAH plugin) {
         this.plugin = plugin;
@@ -54,42 +54,61 @@ public class AuctionManager {
         return cancelledItems.getOrDefault(uuid, new ArrayList<>());
     }
 
-    public void processSale(UUID sellerId, double amount) {
+    public void processSale(UUID sellerId, String currencyKey, double amount) {
         Player seller = Bukkit.getPlayer(sellerId);
         if (seller != null && seller.isOnline()) {
-            if (!DustyEconomyBridge.addBalance(plugin.getLogger(), sellerId, "money", amount)) {
+            if (!DustyEconomyBridge.addBalance(plugin.getLogger(), sellerId, currencyKey, amount)) {
                 plugin.getLogger().warning("[SimpleAH] Could not credit seller " + seller.getName()
-                        + " $" + amount + " – queuing as offline earnings.");
-                double current = offlineEarnings.getOrDefault(sellerId, 0.0);
-                offlineEarnings.put(sellerId, current + amount);
+                        + " " + amount + " " + currencyKey + " - queuing as offline earnings.");
+                addOfflineEarning(sellerId, currencyKey, amount);
                 return;
             }
-            seller.sendMessage("§aYour item sold on the AH for $" + amount + "!");
+            seller.sendMessage("\u00a7aYour item sold on the AH for "
+                    + AHCommand.formatCurrency(currencyKey, amount) + "\u00a7a!");
         } else {
-            double current = offlineEarnings.getOrDefault(sellerId, 0.0);
-            offlineEarnings.put(sellerId, current + amount);
+            addOfflineEarning(sellerId, currencyKey, amount);
         }
     }
 
     public void claimOfflineEarnings(Player player) {
         UUID id = player.getUniqueId();
-        if (offlineEarnings.containsKey(id)) {
-            double amount = offlineEarnings.get(id);
-            if (!DustyEconomyBridge.addBalance(plugin.getLogger(), id, "money", amount)) {
-                plugin.getLogger().warning("[SimpleAH] Could not pay offline earnings of $" + amount
-                        + " to " + player.getName() + " – will retry on next login.");
-                return;
+        List<OfflineEarning> earnings = offlineEarnings.get(id);
+        if (earnings == null || earnings.isEmpty()) return;
+
+        Iterator<OfflineEarning> it = earnings.iterator();
+        double totalMoney = 0;
+        while (it.hasNext()) {
+            OfflineEarning earning = it.next();
+            if (DustyEconomyBridge.addBalance(plugin.getLogger(), id, earning.currencyKey, earning.amount)) {
+                if (earning.currencyKey.equals("money")) {
+                    totalMoney += earning.amount;
+                } else {
+                    player.sendMessage("\u00a7aWhile you were offline, an AH sale earned you "
+                            + AHCommand.formatCurrency(earning.currencyKey, earning.amount) + "\u00a7a!");
+                }
+                it.remove();
+            } else {
+                plugin.getLogger().warning("[SimpleAH] Could not pay offline earnings of "
+                        + earning.amount + " " + earning.currencyKey + " to " + player.getName()
+                        + " - will retry on next login.");
             }
-            player.sendMessage("§aWhile you were offline, your AH items sold for $" + amount + "!");
+        }
+
+        if (totalMoney > 0) {
+            player.sendMessage("\u00a7aWhile you were offline, your AH items sold for "
+                    + AHCommand.formatCurrency("money", totalMoney) + "\u00a7a!");
+        }
+
+        if (earnings.isEmpty()) {
             offlineEarnings.remove(id);
         }
     }
 
-    /**
-     * Loads active auctions, cancelled/unclaimed items, and pending offline
-     * earnings back out of data.yml. Previously this was a no-op, so every
-     * server restart silently wiped all outstanding auctions and earnings.
-     */
+    private void addOfflineEarning(UUID uuid, String currencyKey, double amount) {
+        offlineEarnings.computeIfAbsent(uuid, k -> new ArrayList<>())
+                .add(new OfflineEarning(currencyKey, amount));
+    }
+
     private void loadData() {
         if (!dataFile.exists()) return;
 
@@ -106,10 +125,11 @@ public class AuctionManager {
                     UUID seller = UUID.fromString(entry.getString("seller"));
                     ItemStack item = entry.getItemStack("item");
                     double price = entry.getDouble("price");
+                    String currencyKey = entry.getString("currencyKey", "money");
                     boolean isBin = entry.getBoolean("bin");
                     long expiresAt = entry.getLong("expiresAt");
                     if (item != null) {
-                        activeAuctions.add(new AuctionItem(seller, item, price, isBin, expiresAt));
+                        activeAuctions.add(new AuctionItem(seller, item, price, currencyKey, isBin, expiresAt));
                     }
                 } catch (Exception e) {
                     plugin.getLogger().warning("Skipped a corrupt active auction entry '" + key + "' in data.yml");
@@ -142,7 +162,24 @@ public class AuctionManager {
             for (String uuidKey : earningsSection.getKeys(false)) {
                 try {
                     UUID uuid = UUID.fromString(uuidKey);
-                    offlineEarnings.put(uuid, earningsSection.getDouble(uuidKey));
+                    ConfigurationSection playerEarnings = earningsSection.getConfigurationSection(uuidKey);
+                    if (playerEarnings == null) {
+                        // Legacy format: single double value (always "money")
+                        double amount = earningsSection.getDouble(uuidKey);
+                        if (amount > 0) {
+                            addOfflineEarning(uuid, "money", amount);
+                        }
+                        continue;
+                    }
+                    for (String earningKey : playerEarnings.getKeys(false)) {
+                        ConfigurationSection entry = playerEarnings.getConfigurationSection(earningKey);
+                        if (entry == null) continue;
+                        String currencyKey = entry.getString("currency", "money");
+                        double amount = entry.getDouble("amount", 0);
+                        if (amount > 0) {
+                            addOfflineEarning(uuid, currencyKey, amount);
+                        }
+                    }
                 } catch (IllegalArgumentException e) {
                     plugin.getLogger().warning("Skipped a corrupt offline-earnings entry '" + uuidKey + "' in data.yml");
                 }
@@ -159,6 +196,7 @@ public class AuctionManager {
             data.set(path + ".seller", auction.getSeller().toString());
             data.set(path + ".item", auction.getItem());
             data.set(path + ".price", auction.getPrice());
+            data.set(path + ".currencyKey", auction.getCurrencyKey());
             data.set(path + ".bin", auction.isBin());
             data.set(path + ".expiresAt", auction.getExpiresAt());
         }
@@ -167,14 +205,29 @@ public class AuctionManager {
             data.set("cancelled." + entry.getKey(), entry.getValue());
         }
 
-        for (Map.Entry<UUID, Double> entry : offlineEarnings.entrySet()) {
-            data.set("offlineEarnings." + entry.getKey(), entry.getValue());
+        for (Map.Entry<UUID, List<OfflineEarning>> entry : offlineEarnings.entrySet()) {
+            int earningIdx = 0;
+            for (OfflineEarning earning : entry.getValue()) {
+                String path = "offlineEarnings." + entry.getKey() + "." + (earningIdx++);
+                data.set(path + ".currency", earning.currencyKey);
+                data.set(path + ".amount", earning.amount);
+            }
         }
 
         try {
             data.save(dataFile);
         } catch (IOException e) {
             plugin.getLogger().severe("Could not save SimpleAH data.yml: " + e.getMessage());
+        }
+    }
+
+    static class OfflineEarning {
+        final String currencyKey;
+        final double amount;
+
+        OfflineEarning(String currencyKey, double amount) {
+            this.currencyKey = currencyKey;
+            this.amount = amount;
         }
     }
 }
