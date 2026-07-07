@@ -1,0 +1,43 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.yourserver'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+    maven { url 'https://oss.sonatype.org/content/groups/public/' }
+    // WorldGuard/WorldEdit are published here (EngineHub's own repo).
+    maven { url 'https://maven.enginehub.org/repo/' }
+}
+
+dependencies {
+    // Match this version to your target server version.
+    compileOnly 'org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT'
+    // Optional/soft dependency - only used for the WorldGuard region checks
+    // on "blockdrop:" bonus drops. compileOnly because it's not bundled into
+    // the plugin jar and the plugin must keep working fine without it
+    // installed. Bump this to match the WorldGuard version on your server
+    // if region checks ever throw warnings about a version mismatch.
+    compileOnly 'com.sk89q.worldguard:worldguard-bukkit:7.0.9'
+}
+
+processResources {
+    filteringCharset = 'UTF-8'
+}
+
+tasks.named('jar') {
+    archiveBaseName.set('CustomEnchants')
+    archiveVersion.set(project.version.toString())
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

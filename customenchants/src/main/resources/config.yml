@@ -1,0 +1,784 @@
+# =========================================================
+#  CustomEnchants configuration
+#  Edit freely - use /ce reload to apply changes live.
+# =========================================================
+
+settings:
+  # true = book is consumed even when the roll fails
+  consume-book-on-fail: true
+  # format used to render enchant lines on lore. %enchant% %level%(roman)
+  lore-format: "%enchant% %level%"
+  # Skript variable used as the player's currency balance for the GUI
+  # upgrade system. %player% is replaced with the player's name.
+  # Read/written directly via Skript's variable storage.
+  currency-variable: "money::%player%"
+  # Title of the GUI opened when right-clicking a pickaxe.
+  gui-title: "&8Pickaxe Enchant Upgrades"
+
+  # Plugin-wide controls for the "blockdrop:" bonus-drop action (see the
+  # "actions:" notes further down for what blockdrop: actually does).
+  # Every enchant's (and every global-tools set's) blockdrop: action is
+  # subject to this section. Individual enchants/global-tools sets can ALSO
+  # have their own "block-drops:" section (see the miners_fortune example
+  # below) that layers on top of this one - an enchant can only be MORE
+  # restricted than this section, never less.
+  #
+  # NOTE: this section ONLY ever gates blockdrop:. If you want a WorldGuard
+  # region check on some OTHER action (a message, a command, a chance:
+  # roll, anything) - or a different region list than the one below - use
+  # the general-purpose "disabled-regions: <regions>: <action>" action-line
+  # prefix instead (see the "actions:" notes further down). It can be used
+  # on any action, in any trigger, for any enchant or global-tools set -
+  # region restrictions are not limited to block-drops anymore.
+  block-drops:
+    # Master kill switch. Set to false to turn bonus block drops off
+    # everywhere, for every enchant/global-tools set, without touching
+    # individual configs.
+    enabled: true
+    # WorldGuard region ids (case-insensitive) in which NO enchant's/
+    # global-tools set's blockdrop: action will ever run - e.g. a
+    # spawn/build/no-farm region. Requires WorldGuard to be installed;
+    # harmless (ignored) if it isn't.
+    disabled-regions: []
+
+  # Plugin-wide toggle for the "vanilla-enchant:"/"potion-effect:" hijack
+  # features (see the "enchants:" notes further down). Set enabled: false
+  # to turn off the REAL vanilla side-effects everywhere at once (no real
+  # Efficiency/Sharpness/etc. gets applied, no potion effects get granted)
+  # without deleting or rewriting any enchant config - they simply behave
+  # as purely custom enchants again (their success-chance/GUI/actions/etc.
+  # keep working exactly as normal) until you flip this back on.
+  vanilla-enchants:
+    enabled: true
+
+  # Plugin-wide toggle + tick interval for the "on-hold" trigger and for
+  # potion-effect enchants, both of which are driven by one repeating task
+  # that checks every online player's held (main/off hand) and worn
+  # (armor) items. Applies live from /ce reload - no restart needed.
+  on-hold:
+    enabled: true
+    interval-ticks: 20   # 20 ticks = 1 second
+
+  # Overrides vanilla Unbreaking's own "chance a use reduces durability"
+  # math with your own formula. Applies to ANY item that has a real vanilla
+  # Unbreaking enchantment on it - a book from this plugin's own
+  # "vanilla-enchant: UNBREAKING" hijack (see the "unbreaking:" example
+  # further down), a normal enchanting table roll, an anvil combine, or
+  # anything else - so the item is still genuinely Unbreaking as far as the
+  # game, other plugins, and anvils are concerned; only the actual math
+  # behind it changes.
+  #
+  # Both formulas use the same "level"-aware expression language as
+  # success-chance/upgrade-costs/values/ranges everywhere else (level, +
+  # - * / ^, parentheses, min/max/floor/ceil/round/abs/sqrt - see the
+  # "enchants:" notes further down for the full writeup). "level" is bound
+  # to the item's real Unbreaking level, not a book level.
+  #
+  # Each formula is read as a 0-100 PERCENT CHANCE THAT A USE REDUCES
+  # DURABILITY (i.e. the same thing vanilla's own numbers mean) - so a
+  # HIGHER number means the enchant protects LESS, and a LOWER number
+  # means it protects MORE. The vanilla formulas it replaces are:
+  #   tools/items : 100 / (level + 1)             (e.g. 50% at I, 25% at III)
+  #   armor       : 60 + (40 / (level + 1))        (e.g. 80% at I, 70% at III)
+  # Leave both formulas exactly as shown below to keep true vanilla
+  # behaviour while still having this section enabled (harmless either way).
+  # If a formula is missing/invalid it silently falls back to the real
+  # vanilla formula for that category, so this can never brick durability.
+  unbreaking-override:
+    enabled: true
+    # Anything that isn't armor: pickaxes, axes, swords, hoes, shovels,
+    # fishing rods, bows, crossbows, tridents, shears, elytra, etc.
+    tools-formula: "(100 / level)^(level*.01 + 1)"
+    # Helmets, chestplates, leggings, and boots specifically.
+    armor-formula: "60 + (40 / (level * 2))"
+
+messages:
+  apply-success: "&aSuccess! Your item now glows with &f%enchant% %level%&a!"
+  apply-fail: "&cThe enchantment failed... the book crumbles to dust."
+  max-level: "&eThat item already has the maximum level of %enchant%."
+  wrong-item: "&cThat enchant cannot be applied to this type of item."
+  dust-applied: "&bWhite Dust absorbed! Success chance is now %chance%%%."
+  dust-max: "&eThis book already has the maximum White Dust bonus."
+  dust-wrong-item: "&cWhite Dust can only be applied to an enchant book."
+  need-offhand-item: "&cHold the item you want to enchant in your off-hand."
+  gui-upgrade-success: "&aUpgraded %enchant% to level %level%!"
+  gui-insufficient-funds: "&cYou need %cost% currency to upgrade %enchant%."
+  gui-max-level-reached: "&e%enchant% is already at max level."
+  gui-not-configured: "&cThis enchant has no upgrade cost configured."
+  gui-downgrade-success: "&aRemoved a level of %enchant% (now %level%) and refunded %refund%."
+  gui-no-level-to-remove: "&e%enchant% isn't applied to this item, so there's nothing to remove."
+  gui-downgrade-not-configured: "&cThis enchant has no upgrade cost configured, so it can't be refunded."
+  # Unenchanted (mystery) book messages. %rarity% = the book's rarity display
+  # name, %enchant%/%level% = the enchant and level it rolled.
+  unenchanted-applied: "&aThe %rarity% book reveals &f%enchant% %level%&a and binds it to your item!"
+  unenchanted-no-enchant: "&cThere are no %rarity% enchants that can go on that item."
+  unenchanted-no-upgrade: "&eThe book rolled %enchant% %level%, but your item already has that or better."
+
+# Book rarity tiers. Purely cosmetic now (color/display name on the book) -
+# the old xp-cost field has been removed along with the whole XP-level cost
+# system.
+#
+# NA is a fourth rarity. Enchants can be classed as NA (enchant-rarity: "NA"),
+# but there is deliberately NO unenchanted/mystery book for NA - so NA enchants
+# are never handed out by the random-roll books below. Its color/display here is
+# only used if you hand out a specific NA enchant with "/ce give-book".
+book-tiers:
+  COMMON:
+    color: "&f"
+    display: "Common"
+  RARE:
+    color: "&9"
+    display: "Rare"
+  LEGENDARY:
+    color: "&6"
+    display: "Legendary"
+  NA:
+    color: "&8"
+    display: "NA"
+
+# ---------------------------------------------------------
+# Unenchanted ("mystery") books - one per rarity.
+#
+# Unlike a normal enchant book (which carries one pre-chosen enchant), an
+# unenchanted book carries NO enchant. When a player drags it onto a valid item
+# (exactly like a normal book), it rolls a RANDOM enchant that is classed as the
+# book's rarity AND supports that item, then rolls a level for it and applies it.
+#
+# There are three: COMMON, RARE and LEGENDARY. There is NO book for NA (adding an
+# "NA:" entry here is ignored with a console warning), so NA-classed enchants are
+# never rolled.
+#
+#   material : the item used for the book (any Bukkit Material). Detection is by
+#              hidden tag, not material, so you can freely re-skin these.
+#   name     : display name (color codes with &).
+#   lore     : display lore lines.
+#   level-roll : the EDITABLE formula for which level gets rolled. It's a range
+#              (min..max, inclusive) and its "level" variable resolves to the
+#              chosen enchant's own max-level, so the roll always fits that
+#              enchant. The result is clamped to [1, that enchant's max-level].
+#              Written as a min/max block, where each bound accepts the full
+#              number DSL used everywhere else (flat number, "level", or a
+#              formula/expression). Omit level-roll entirely to default to a
+#              uniform 1..max-level roll. Examples:
+#                level-roll:                  # uniform across the whole range (the default)
+#                  min: 1
+#                  max: "level"
+#                level-roll:                  # only ever the top 25% of levels
+#                  min: "level * 0.75"
+#                  max: "level"
+#                level-roll:                  # low rolls, capped at 5
+#                  min: 1
+#                  max: "min(5, level)"
+#              (An inline "a-b" string is also accepted, but only with plain
+#              numbers - e.g. "3-8" - so use the min/max block for formulas.)
+unenchanted-books:
+  COMMON:
+    material: BOOK
+    name: "&fCommon Mystery Book"
+    lore:
+      - "&7Drag onto an item to bind a"
+      - "&frandom &fCommon &7enchant to it."
+    # Uniform 1..max-level of whichever Common enchant is rolled.
+    level-roll:
+      min: 1
+      max: "level"
+  RARE:
+    material: BOOK
+    name: "&9Rare Mystery Book"
+    lore:
+      - "&7Drag onto an item to bind a"
+      - "&frandom &9Rare &7enchant to it."
+    # Biased a bit higher: never below half of that enchant's max-level.
+    level-roll:
+      min: "max(1, level * 0.5)"
+      max: "level"
+  LEGENDARY:
+    material: BOOK
+    name: "&6Legendary Mystery Book"
+    lore:
+      - "&7Drag onto an item to bind a"
+      - "&frandom &6Legendary &7enchant to it."
+    # High rolls only: at least 75% of that enchant's max-level.
+    level-roll:
+      min: "max(1, level * 0.75)"
+      max: "level"
+
+white-dust:
+  material: SUGAR
+  name: "&fWhite Dust"
+  lore:
+    - "&7Right click while holding an"
+    - "&7Enchant Book in your off-hand"
+    - "&7to increase its success chance."
+  bonus-per-use: 5.0     # percentage points added per dust used
+  max-bonus: 30.0        # hard cap of bonus percentage points per book
+
+# ---------------------------------------------------------
+# Enchant definitions.
+#
+# EVERY numeric field below - success-chance, upgrade-costs, values:, and
+# ranges: min/max - now shares ONE consistent syntax (see the "values:"
+# and "ranges:" notes further down for the full accepted shapes). In short,
+# any of these fields can be:
+#   - a flat number                -> same at every level
+#   - "level"                      -> literal shorthand for "= current level"
+#   - "level * 150 + 50"           -> any formula, "level" is the only variable
+#                                      (+ - * / % ^, parentheses, and
+#                                      min/max/floor/ceil/round/abs/sqrt)
+#   - an explicit per-level table  -> { 1: 10, 2: 20, 3: 35 }
+#   - a {base, per-level, min, max, scale-with-level} formula table, where
+#     base/per-level/min/max can themselves be numbers OR expressions
+#
+# success-chance: success chance (0-100) for the book roll. Flat by default
+#   (identical at every level, exactly like before), but can now scale with
+#   the book's level using any of the shapes above.
+# supported-items: bukkit Material names the enchant can be applied to.
+#
+# gui-on: true/false - whether this enchant shows up in the pickaxe
+#   upgrade GUI (only ever shown for pickaxe-type items regardless of
+#   this setting; this just toggles visibility/availability there).
+#
+# upgrade-costs: currency cost to reach a level via the GUI (paid from the
+#   currency-variable balance above, no roll involved - GUI upgrades
+#   always succeed if the player can afford it). Two ways to write it:
+#   - a per-level table (unchanged from before): "2: 100" means it costs
+#     100 currency to go from level 1 to 2. A level with NO entry is
+#     treated as "not configured" for the GUI (gui-not-configured message) -
+#     handy for deliberately capping GUI upgrades below max-level while
+#     still allowing higher levels via book rolls.
+#   - a flat number or a formula/expression (new): resolves for every
+#     level automatically, e.g. "level * 200" or a {base, per-level, max}
+#     table - no need to hand-write a cost for every level up to max-level.
+#
+# actions: lists of "action lines" run on each trigger. Supported prefixes:
+#   cmd: <console command>        -> dispatched as console command
+#   msg: <message>                -> sent directly to the player
+#   skriptvar: <name> = <value>   -> sets a Skript variable directly (requires Skript)
+#                                     supports =, += , -=
+#
+#   chance: <percent|value-name|expression>: <action>[; <action>...]
+#     -> Rolls a percentage chance and only runs the nested action(s) if it
+#        succeeds. The chance can be a flat number ("chance: 25: ..."), the
+#        name of an entry from this enchant's "values:" section below, or an
+#        inline "level"-aware expression ("chance: level*5: ..."). Chain
+#        multiple nested actions on one successful roll by separating them
+#        with " ; ". e.g. "chance: 25: msg: &aBonus!; cmd: give %player% diamond 1"
+#
+#   disabled-regions: <region1>[,<region2>...]: <action>[; <action>...]
+#     -> Only runs the nested action(s) (again separated by " ; ") if the
+#        current location is NOT inside any of the listed WorldGuard region
+#        ids (comma-separated, case-insensitive). Unlike the blockdrop-only
+#        "settings.block-drops"/per-enchant "block-drops:" sections, this
+#        works on ANY action - msg:, cmd:, blockdrop:, even another
+#        chance: - and can be placed on ANY trigger, not just
+#        on-break-block. With no WorldGuard installed, or an empty region
+#        list, the nested action(s) always run.
+#        e.g. "disabled-regions: spawn,no-farm: msg: &cDisabled here!"
+#        e.g. "disabled-regions: mine-reset: blockdrop: 2"
+#        Requires WorldGuard to be installed; harmless (ignored, nested
+#        action always runs) if it isn't.
+#
+#   setvar: <name> = <number|value-name|expression>
+#     -> Resolves a flat number, a named "values:" entry, or an inline
+#        expression (see below) for the current level, then stores it both
+#        as a Skript variable AND as a local %name% placeholder usable by
+#        every action line after it (in the same trigger firing, including
+#        nested chance: actions).
+#
+#   randomvar: <name> = <min-max|range-name>
+#     -> Picks a random number from a literal range ("3-6") or a named
+#        "ranges:" entry (see below), then stores it the same way setvar
+#        does: as a Skript variable and a local %name% placeholder.
+#
+#   blockdrop: <amount|value-name|range-name|expression>
+#     -> Only valid on the on-break-block trigger. Actually adds that many
+#        extra units of the block's own drop(s) to the world at the block
+#        that was just broken - a real bonus-drop effect, not just a
+#        message or a currency payout. The amount can be a flat number,
+#        a "values:"/"ranges:" name, an inline "min-max" range, or an
+#        inline "level"-aware expression (e.g. "blockdrop: level").
+#        The bonus items are announced via a real block-drop event tied to
+#        the block, so other plugins (auto-sell shops, drop counters, etc.)
+#        treat them exactly like any other item the block naturally
+#        dropped. Can be turned off altogether, or per WorldGuard region,
+#        via "settings.block-drops" (plugin-wide) and/or each enchant's own
+#        "block-drops:" section (see "miners_fortune" below) - see the
+#        settings.block-drops comment near the top of this file.
+#
+# values: (optional, per-enchant) named numbers usable by chance:/setvar:
+#   and the amount field of blockdrop:. Each entry is any of the shapes
+#   described at the top of the "Enchant definitions" section above (flat
+#   number, "level" literal, formula/expression string, per-level table, or
+#   a {base, per-level, max, min, scale-with-level} formula whose own
+#   fields can be numbers or expressions). This is what lets a percentage
+#   chance (or any other number) "scale like prices with the level" - set
+#   scale-with-level: false on a formula entry to freeze it at "base"
+#   without deleting your numbers.
+#
+# ranges: (optional, per-enchant) named random amount ranges, usable by
+#   randomvar: and the amount field of blockdrop:. Each entry has a
+#   "min" and "max", and each side is itself parsed the same way as a
+#   "values:" entry (including formulas/expressions) - so the whole range
+#   can scale with level too, e.g. { min: 1, max: "level" } for a range
+#   whose top end always equals the current level. When used as an amount,
+#   the actual number is picked uniformly at random between min and max
+#   (inclusive) every time it's resolved.
+#
+# Placeholders available in action lines:
+#   %player%   -> player name
+#   %level%    -> current enchant level (roman aware where noted)
+#   %level_num%-> current enchant level as a plain number
+#   %victim%   -> UUID of the other entity involved (on-hit/on-kill), if any
+#   %world%    -> world name
+#   %x% %y% %z%-> player location
+#   %<name>%   -> any name set earlier in the same trigger via setvar:/randomvar:
+#
+# Available triggers: on-apply, on-level-up, on-fail, on-hit, on-hit-taken,
+#                      on-kill, on-break-block, on-interact, on-consume,
+#                      on-hold
+#
+#   on-hold is different from the others: instead of firing off some
+#   in-game event, it fires repeatedly (every settings.on-hold.interval-
+#   ticks, default 1 second) for as long as the item is either held (main
+#   or off hand) or worn as armor - completely config-toggleable and
+#   independent of every other trigger. Use it for "while equipped" style
+#   effects that a one-shot event can't express, e.g. a periodic message,
+#   a slow currency drip, or (combined with the DSL below) a scaling aura.
+#
+# vanilla-enchant: (optional, per-enchant) - "hijacks" a REAL vanilla
+#   Bukkit enchantment (Efficiency, Sharpness, Protection, Unbreaking,
+#   Fortune, Looting, ... - anything Minecraft has) instead of this being
+#   a purely custom enchant. Applied via ItemMeta#addEnchant with
+#   ignoreLevelRestriction = true, so max-level is NEVER limited to
+#   vanilla's own cap - an enchant with "vanilla-enchant: EFFICIENCY" and
+#   "max-level: 200" really does apply Efficiency 200, and vanilla mining-
+#   speed math (which just reads the stored level, uncapped) genuinely
+#   feels it - it isn't just a cosmetic number. A book for this enchant at
+#   level 1 behaves exactly like a normal Efficiency I book; nothing stops
+#   you from also having "max-level: 1" for a purely vanilla-strength
+#   version if that's all you want. EVERY other field (success-chance,
+#   upgrade-costs, gui-on, actions, values/ranges, currency) works exactly
+#   the same as any other enchant, whether or not this is set - leave it
+#   out entirely for a purely custom enchant, exactly like before.
+#   Accepts either the modern name ("efficiency") or the legacy Bukkit enum
+#   name ("DIG_SPEED"). Can be turned off everywhere at once (falls back to
+#   a purely custom enchant, nothing deleted) via settings.vanilla-
+#   enchants.enabled above.
+#
+# hide-vanilla-tooltip: (optional, only used alongside vanilla-enchant,
+#   default true) - hides the item's own client-rendered tooltip line for
+#   the vanilla enchant (e.g. "Efficiency 200") so only this plugin's own
+#   lore-format line is shown, avoiding a duplicate-looking display. Set to
+#   false to keep vanilla's native line too.
+#
+# potion-effect: (optional, per-enchant) - "hijacks" a REAL vanilla potion
+#   effect (Speed, Jump Boost, Fire Resistance, Night Vision, ... any
+#   PotionEffectType) and keeps it active on the player for as long as they
+#   hold/wear the item, refreshed by the on-hold task above. Removed the
+#   instant the item is no longer held/worn - and ONLY an effect this
+#   plugin granted is ever removed, so a real potion the player drank (or
+#   an effect from another plugin) is never touched.
+#     type: <PotionEffectType name>       (required, e.g. SPEED)
+#     amplifier: <number|value-name|expression>   (optional, default 0)
+#       -> Bukkit's raw (0-based) amplifier - 0 is "Speed I". Resolves
+#          per-level through the same DSL as values:/ranges:, e.g.
+#          "floor(level / 2)" for a slowly climbing amplifier.
+#     duration-ticks: <number|value-name|expression>   (optional, default 100)
+#       -> how long a single application lasts. The on-hold task always
+#          applies at least its own tick interval + a small buffer so the
+#          effect never blinks off between two refreshes - this field only
+#          matters if you want it to noticeably outlast that.
+#     ambient / particles / icon: booleans (optional, default false/true/true)
+#       -> passed straight through to the PotionEffect, same meaning as
+#          vanilla (ambient = beacon-style translucent particles).
+#
+# Want these same triggers/actions to just run for a type of tool without
+# any enchant being applied at all? See "global-tools:" near the bottom of
+# this file.
+# ---------------------------------------------------------
+enchants:
+
+  miners_fortune:
+    display-name: "&6Miner's Fortune"
+    enchant-rarity: "RARE"
+    max-level: 25
+    success-chance: 100.0
+    supported-items:
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+      - IRON_PICKAXE
+    gui-on: true
+    currency:
+      variable: "orbs::%player%"
+      display-name: "Orbs"
+    upgrade-costs: "(round(5000 * (1.05321159^level))) - 266"
+    # Named, level-scalable numbers/ranges - see the DSL notes above the
+    # "enchants:" section. Referenced by name from the actions below.
+    values:
+      # Percentage chance of a bonus ore drop. Scales like the upgrade-costs
+      # table above: level 1-2 = 10%, level 3-4 = 20%, level 5 = 35%.
+      bonus_drop_chance: "level"
+      # A formula-based alternative style: starts at 5, +3 per level, capped at 25.
+      # (Not used below by default - shown here as a second valid syntax example.)
+      # streak_bonus_chance:
+      #   scale-with-level: true
+      #   base: 5
+      #   per-level: 3
+      #   max: 25
+    ranges:
+      # When the bonus_drop_chance roll (above) succeeds, this is how many
+      # extra units of the block's own drop you actually get - picked
+      # uniformly at random between min and max (inclusive) each time.
+      # The max bound is just "level" here - the literal shorthand for
+      # "equal to the current level" - so at level 3 you get 1-3 bonus ore,
+      # at level 5 you get 1-5, with no per-level table to maintain.
+      bonus_drop_amount:
+        min: 0
+        max: "level"
+    # Optional, per-enchant override for the blockdrop: action, on top of
+    # the plugin-wide settings.block-drops section above. Omit this whole
+    # section entirely to just inherit the plugin-wide settings unchanged
+    # (that's the default for every other enchant in this file).
+    block-drops:
+      enabled: true          # set false to disable ONLY this enchant's bonus drops
+      disabled-regions: []   # e.g. ["mine-reset-zone"] - regions where only THIS enchant's bonus drops are blocked
+    actions:
+      on-apply:
+        - "msg: &aYour pickaxe now carries %enchant% %level%!"
+      on-level-up:
+        - "msg: &aMiner's Fortune increased to level %level%!"
+      on-break-block:
+        # Example of paying out through a Skript-managed economy variable.
+        # In your Skript script, read {economy::%player%} to reflect balance changes.
+        # Percentage chance (scales with level via the "values:" table above)
+        # to trigger a bonus payout AND an actual bonus drop - chained as
+        # three actions on one successful roll. "blockdrop: bonus_drop_amount"
+        # is what really adds the extra ore to the drops; the amount is a
+        # random number from the "bonus_drop_amount" range above.
+        - "chance: bonus_drop_chance: blockdrop: bonus_drop_amount"
+
+  extra_damage:
+    display-name: "&6Extra Damage"
+    enchant-rarity: "RARE"
+    max-level: 10
+    # success-chance can scale too, using the exact same syntax as
+    # upgrade-costs/values below - here it drops as the enchant gets
+    # stronger, floored at 20%, instead of staying flat at every level.
+    success-chance: "((level * -8) + 100)"
+    supported-items:
+      - WOOD_SWORD
+      - STONE_SWORD
+      - GOLD_SWORD
+      - IRON_SWORD
+      - DIAMOND_SWORD
+      - NETHERITE_SWORD
+    gui-on: true
+    # A formula instead of a hand-written table - resolves automatically for
+    # every level up to max-level (10 here: 250, 400, 550 ... 1450), so
+    # raising max-level later doesn't require adding new cost entries by
+    # hand. Swap in any curve you like, e.g. "100 * (1.2 ^ (level - 1))"
+    # for a compounding/exponential cost instead of a linear one.
+    actions:
+      on-apply:
+        - "msg: &aYour sword now carries %enchant% %level%!"
+      on-level-up:
+        - "msg: &aExtra Damage increased to level %level%!"
+      on-hit:
+        # Example of paying out through a Skript-managed economy variable.
+        # In your Skript script, read {economy::%player%} to reflect balance changes.
+        - "cmd: damage %victim% 100 minecraft:generic"
+
+  head_hunter:
+    display-name: "&6Head Hunter"
+    enchant-rarity: "RARE"
+    max-level: 10
+    # success-chance can scale too, using the exact same syntax as
+    # upgrade-costs/values below - here it drops as the enchant gets
+    # stronger, floored at 20%, instead of staying flat at every level.
+    success-chance: "((level * -8) + 100)"
+    supported-items:
+      - WOOD_SWORD
+      - STONE_SWORD
+      - GOLD_SWORD
+      - IRON_SWORD
+      - DIAMOND_SWORD
+      - NETHERITE_SWORD
+    gui-on: true
+    # A formula instead of a hand-written table - resolves automatically for
+    # every level up to max-level (10 here: 250, 400, 550 ... 1450), so
+    # raising max-level later doesn't require adding new cost entries by
+    # hand. Swap in any curve you like, e.g. "100 * (1.2 ^ (level - 1))"
+    # for a compounding/exponential cost instead of a linear one.
+    actions:
+      on-apply:
+        - "msg: &aYour sword now carries %enchant% %level%!"
+      on-level-up:
+        - "msg: &aHead Hunter increased to level %level%!"
+      on-kill:
+        # Example of paying out through a Skript-managed economy variable.
+        # In your Skript script, read {economy::%player%} to reflect balance changes.
+        - "chance: %level_num% * 10: cmd: givehead %player% MHF_Chicken &fChicken"
+
+  # -------------------------------------------------------------------
+  # Example: a "vanilla-enchant hijack". This is a real Efficiency under
+  # the hood, applied via the vanilla enchantment system itself, so
+  # vanilla's own mining-speed math (which just reads the stored level)
+  # genuinely feels every level - including levels far past the vanilla
+  # cap of 5. Everything else about this entry (book roll, GUI upgrades,
+  # currency, actions) works exactly like any other enchant above.
+  # -------------------------------------------------------------------
+  efficiency:
+    display-name: "&bEfficiency"
+    enchant-rarity: "LEGENDARY"
+    max-level: 40
+    success-chance: "max(10, 100 - level)"
+    supported-items:
+      - WOODEN_PICKAXE
+      - STONE_PICKAXE
+      - IRON_PICKAXE
+      - GOLDEN_PICKAXE
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    vanilla-enchant: "EFFICIENCY"   # legacy name "DIG_SPEED" also accepted
+    hide-vanilla-tooltip: true      # only our own lore-format line is shown
+    gui-on: true
+    upgrade-costs: "round(1000 + (0.0575 *( (level - 1)^3.25)))"
+    actions:
+      on-apply:
+        - "msg: &bYour pickaxe now mines at %enchant% %level%!"
+      on-level-up:
+        - "msg: &bEfficiency increased to level %level%!"
+
+  unbreaking:
+    display-name: "&bUnbreaking"
+    enchant-rarity: "LEGENDARY"
+    max-level: 100
+    success-chance: "max(10, 100 - level)"
+    supported-items:
+      - WOODEN_PICKAXE
+      - STONE_PICKAXE
+      - IRON_PICKAXE
+      - GOLDEN_PICKAXE
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    vanilla-enchant: "UNBREAKING"   # legacy name "DIG_SPEED" also accepted
+    hide-vanilla-tooltip: true      # only our own lore-format line is shown
+    gui-on: true
+    upgrade-costs: "(round(20000 / 101) * level) + 2"
+    actions:
+      on-apply:
+        - "msg: &bYour pickaxe now mines at %enchant% %level%!"
+      on-level-up:
+        - "msg: &Unbreaking increased to level %level%!"
+      # Fires from the GUI's right-click (refund) - %level% here is the new,
+      # post-removal level (0 if the enchant was just fully removed).
+      on-level-down:
+        - "msg: &7Unbreaking lowered to level %level%."
+
+
+  # -------------------------------------------------------------------
+  # Example: "vanilla potion effects as enchants". While this item is
+  # held or worn, Speed (scaling amplifier) is kept active via the
+  # on-hold task - and cleanly removed the instant it no longer is.
+  # -------------------------------------------------------------------
+  swift:
+    display-name: "&eSwift"
+    enchant-rarity: "RARE"
+    max-level: 10
+    success-chance: 75.0
+    supported-items:
+      - LEATHER_BOOTS
+      - IRON_BOOTS
+      - GOLDEN_BOOTS
+      - DIAMOND_BOOTS
+      - NETHERITE_BOOTS
+    potion-effect:
+      type: "SPEED"
+      amplifier: "floor(level / 2)"   # every 2 levels adds another amplifier step
+      duration-ticks: 100
+      ambient: false
+      particles: true
+      icon: true
+    gui-on: false
+    upgrade-costs: "level * 300"
+    actions:
+      on-apply:
+        - "msg: &eYour boots now carry %enchant% %level%!"
+      on-level-up:
+        - "msg: &eSwift increased to level %level%!"
+      on-hold:
+        # Fires once per on-hold tick (settings.on-hold.interval-ticks)
+        # for as long as the boots are worn - independent of the
+        # potion-effect above, just another action list like any other.
+
+  jump:
+    display-name: "&eJump"
+    enchant-rarity: "RARE"
+    max-level: 5
+    success-chance: 75.0
+    supported-items:
+      - WOODEN_PICKAXE
+      - STONE_PICKAXE
+      - IRON_PICKAXE
+      - GOLDEN_PICKAXE
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    potion-effect:
+      type: "JUMP_BOOST"
+      amplifier: "level"   # every 2 levels adds another amplifier step
+      duration-ticks: 100
+      ambient: false
+      particles: true
+      icon: true
+    gui-on: true
+    upgrade-costs:
+      1: 1000
+      2: 7000
+      3: 12000
+      4: 15000
+      5: 15000
+    actions:
+      on-apply:
+        - "msg: &eYour pickaxe now carrries %enchant% %level%!"
+      on-level-up:
+        - "msg: &eJump increased to level %level%!"
+      on-hold:
+        # Fires once per on-hold tick (settings.on-hold.interval-ticks)
+        # for as long as the boots are worn - independent of the
+        # potion-effect above, just another action list like any other.
+
+  haste:
+    display-name: "&eHaste"
+    enchant-rarity: "RARE"
+    max-level: 3
+    success-chance: 75.0
+    supported-items:
+      - WOODEN_PICKAXE
+      - STONE_PICKAXE
+      - IRON_PICKAXE
+      - GOLDEN_PICKAXE
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    potion-effect:
+      type: "HASTE"
+      amplifier: "level"   # every 2 levels adds another amplifier step
+      duration-ticks: 100
+      ambient: false
+      particles: true
+      icon: true
+    gui-on: true
+    upgrade-costs:
+      1: 800
+      2: 10000
+      3: 15000
+    actions:
+      on-apply:
+        - "msg: &eYour pickaxe now carrries %enchant% %level%!"
+      on-level-up:
+        - "msg: &Haste increased to level %level%!"
+      on-hold:
+        # Fires once per on-hold tick (settings.on-hold.interval-ticks)
+        # for as long as the boots are worn - independent of the
+        # potion-effect above, just another action list like any other.
+
+
+  saturation:
+    display-name: "&eSaturation"
+    enchant-rarity: "RARE"
+    max-level: 1
+    success-chance: 75.0
+    supported-items:
+      - WOODEN_PICKAXE
+      - STONE_PICKAXE
+      - IRON_PICKAXE
+      - GOLDEN_PICKAXE
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    potion-effect:
+      type: "SATURATION"
+      amplifier: "level - 1"   # every 2 levels adds another amplifier step
+      duration-ticks: 100
+      ambient: false
+      particles: true
+      icon: true
+    gui-on: true
+    upgrade-costs: "10000"
+    actions:
+      on-apply:
+        - "msg: &eYour pickaxe now carrries %enchant% %level%!"
+      on-level-up:
+        - "msg: &Saturation increased to level %level%!"
+      on-hold:
+        # Fires once per on-hold tick (settings.on-hold.interval-ticks)
+        # for as long as the boots are worn - independent of the
+        # potion-effect above, just another action list like any other.
+
+  # -------------------------------------------------------------------
+  # Example of an NA-rarity enchant. It behaves like any other enchant
+  # (give it directly with "/ce give-book <player> soulbound 1"), but
+  # because its rarity is NA it will NEVER be rolled by any unenchanted
+  # (mystery) book - there is no NA book. Use NA for enchants you only
+  # want handed out deliberately, not via random rolls.
+  soulbound:
+    display-name: "&8Soulbound"
+    enchant-rarity: "NA"
+    max-level: 1
+    success-chance: 100.0
+    supported-items:
+      - DIAMOND_SWORD
+      - NETHERITE_SWORD
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    gui-on: false
+    actions:
+      on-apply:
+        - "msg: &8This item is now Soulbound to you."
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+# global-tools: (optional)
+#
+# Named groups of item types that run their own "actions:" on the
+# configured triggers by themselves - no enchant book, no PDC data, no
+# "applying" anything. This is for effects that should just always exist
+# on a type of tool, e.g. "every diamond and netherite pickaxe drops one
+# extra of whatever it just mined, everywhere except the mine-reset
+# region" - without inventing a fake always-applied enchant to get there.
+#
+# Each entry supports EXACTLY the same "actions:"/"values:"/"ranges:"/
+# "block-drops:" shape as an enchant above (see the "enchants:" notes
+# further up for the full DSL - chance:, setvar:, randomvar:, blockdrop:,
+# disabled-regions:, etc. all work identically here), plus:
+#
+#   materials: (required) list of bukkit Material names this set applies
+#     to, checked against whatever item is in the player's main hand.
+#
+#   level: (optional, default 1) since there's no book/enchant level here,
+#     this is a fixed number used for %level%/%level_num% placeholders and
+#     any level-scaled "values:"/"ranges:" entries in this set.
+#
+# Runs IN ADDITION to (never instead of) any real enchants the item also
+# has applied, and fires regardless of whether the item has any applied
+# enchants at all - that's the whole point.
+# ---------------------------------------------------------
+global-tools:
+  all_pickaxes:
+    materials:
+      - WOOD_PICKAXE
+      - STONE_PICKAXE
+      - IRON_PICKAXE
+      - GOLDEN_PICKAXE
+      - DIAMOND_PICKAXE
+      - NETHERITE_PICKAXE
+    # Optional per-set override for blockdrop:, on top of the plugin-wide
+    # settings.block-drops section - same shape as an enchant's own
+    # "block-drops:" section above.
+    block-drops:
+      enabled: true
+      disabled-regions: []   # e.g. ["mine-reset-zone"]
+    actions:
+      on-break-block:
+        # "disabled-regions:" works here too, gating a plain msg: line
+        # rather than a blockdrop: - proving region checks aren't tied to
+        # bonus drops specifically. Remove/replace freely.
+        - "disabled-regions: mine_world: cmd: currencyadd orbs 1 %player%"
